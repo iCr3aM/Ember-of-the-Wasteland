@@ -89,8 +89,8 @@ define gui.title_text_size = 75
 ## 标题和游戏菜单 #####################################################################
 
 ## 标题菜单和游戏菜单使用的图像。
-define gui.main_menu_background = "images/main_menu_bg.png"
-define gui.game_menu_background = "images/game_menu_bg.png"
+define gui.main_menu_background = "images/bg_main_menu.png"
+#define gui.game_menu_background = "images/bg_game_menu.png"
 
 
 ## 对话 ##########################################################################

@@ -1,5 +1,29 @@
 # Constants and tunables for the game systems
 init -200 python:  #优先级
+
+    # 战斗状态
+    COND_BLEED = 201                # 流血
+    COND_POISON = 202               # 中毒
+    COND_STAGGER = 203              # 失衡
+    COND_ENTANGLED = 204            # 被缠绕
+    COND_FRACTURE = 205             # 骨折
+    COND_INTERNAL_INJURY = 206      # 内伤
+    COND_DEFENSE = 207              # 全力防御
+
+    # 疾病状态
+    COND_THIRST = 301               # 口渴
+    COND_HUNGER = 302               # 饥饿
+    COND_DEHYDRATED = 303           # 脱水
+    COND_EXTREME_DEHYDRATED = 304   # 极度脱水
+    COND_SHELTER = 491              # 闪避状态（非疾病，但与生理状态相关，放在此处）
+
+    # 疲劳状态
+    COND_FATIGUE = 401
+    COND_SEVERE_FATIGUE = 402
+    COND_FAINT = 403
+
+    # 口渴状态元组（用于批量清除）
+    CONDITIONAL_THIRST_IDS = (COND_THIRST, COND_DEHYDRATED, COND_EXTREME_DEHYDRATED)
     
     # 口渴阈值：大于60为口渴、大于80为脱水、大于90为极度脱水
     THIRST_THRESHOLDS = {
@@ -15,17 +39,11 @@ init -200 python:  #优先级
         'fatigue_per_step': 2.5,
     }
 
-    # 战斗动作消耗
-    COMBAT_ACTION_COSTS = {
-        'battle_move': {'hunger': 4.0, 'thirst': 6.0, 'fatigue': 5.0},
-        'attack': {'hunger': 6.0, 'thirst': 8.0, 'fatigue': 7.0},
-    }
-
     # 每小时基础代谢（用于 tick）
     METABOLISM_PER_HOUR = {
-        'hunger': 4.0,
-        'thirst': 6.0,
-        'fatigue': 3.0,
+        'hunger': 2.0,
+        'thirst': 3.0,
+        'fatigue': 1.5,
     }
 
     # 疲劳阈值

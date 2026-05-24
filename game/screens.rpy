@@ -4,7 +4,6 @@
 
 init offset = -1
 
-
 ################################################################################
 ## 样式
 ################################################################################
@@ -74,7 +73,6 @@ style vslider:
 style frame:
     padding gui.frame_borders.padding
     background Frame("gui/frame.png", gui.frame_borders, tile=gui.frame_tile)
-
 
 
 ################################################################################
@@ -250,6 +248,19 @@ init python:
     # config.afm_enable = False            # 更底层的自动前进禁用
     quick_menu = False                     # 让 quick_menu 屏幕不再显示
 
+
+    def auto_save_game():
+        """智能自动保存 - 仅在游戏进行中时保存"""
+        try:
+            # 检查是否在标题菜单（不在标题菜单才保存）
+            if not renpy.context().main_menu:
+                # 使用游戏内存档槽位1作为自动存档
+                renpy.save("auto-1", extra_info=f"自动存档 - 第{game_time.get('day', '?')}天")
+        except:
+            pass  # 静默失败，不阻塞退出
+
+        config.autosave_callback = auto_save_game
+
 style quick_menu is hbox
 style quick_button is default
 style quick_button_text is button_text
@@ -284,16 +295,20 @@ screen navigation():
         spacing gui.navigation_spacing
 
         if main_menu:
-
+            # "继续游戏"按钮 - 尝试读取最新的自动存档
+            if renpy.can_load("auto-1"):
+                textbutton _("继续游戏") action FileLoad("auto-1", confirm=False)
+            else:
+                textbutton _("继续游戏"):
+                    text_color "#666666"
+                    sensitive False
+                    action NullAction()
             textbutton _("开始游戏") action Start()
-
         else:
-
+            # 游戏内菜单默认打开历史记录
             textbutton _("历史") action ShowMenu("history")
 
-            textbutton _("保存") action ShowMenu("save")
-
-        textbutton _("读取游戏") action ShowMenu("load")
+        # textbutton _("读取游戏") action ShowMenu("load")
 
         textbutton _("设置") action ShowMenu("preferences")
 
@@ -413,7 +428,7 @@ screen game_menu(title, scroll=None, yinitial=0.0, spacing=0):
     if main_menu:
         add gui.main_menu_background
     else:
-        add gui.game_menu_background
+        add "gui/overlay/game_menu.png"
 
     frame:
         style "game_menu_outer_frame"
@@ -648,11 +663,7 @@ screen file_slots(title):
 
                 hbox:
                     xalign 0.5
-
                     spacing gui.page_spacing
-
-                    textbutton _("<") action FilePagePrevious()
-                    key "save_page_prev" action FilePagePrevious()
 
                     if config.has_autosave:
                         textbutton _("{#auto_page}A") action FilePage("auto")
@@ -660,12 +671,8 @@ screen file_slots(title):
                     if config.has_quicksave:
                         textbutton _("{#quick_page}Q") action FilePage("quick")
 
-                    ## range(1, 10) 给出 1 到 9 之间的数字。
-                    for page in range(1, 10):
-                        textbutton "[page]" action FilePage(page)
-
-                    textbutton _(">") action FilePageNext()
-                    key "save_page_next" action FilePageNext()
+                    ## 只保留一个可点击页码按钮
+                    textbutton _("1") action FilePage(1)
 
                 if config.has_sync:
                     if CurrentScreenName() == "save":
@@ -744,12 +751,6 @@ screen preferences():
             hbox:
                 style_prefix "slider"
                 box_wrap True
-
-                vbox:
-
-                    label _("文字速度")
-
-                    bar value Preference("text speed")
 
                 vbox:
 

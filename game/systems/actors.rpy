@@ -15,18 +15,16 @@ init python:
                 self.name = "拾荒者"
                 self.max_hp = 100.0
                 self.hp = 100.0
-                self.moves_per_turn = 4
                 self.treasure_id = 0
                 self.corpse_id = 0
-                self.attack_mode_ids = [1, 4] # 默认攻击模式
+                self.attack_mode_ids = [1,2,4] # 默认攻击模式
                 self.morale = 1.0
                 self.cigarettes = 0.0
             else:
                 cfg = CREATURES_DB[creature_id]
                 self.name = cfg["strName"]
                 self.max_hp = cfg.get("fMaxHP", 50.0)
-                self.hp = self.max_hp  # 修复：直接使用 max_hp，而不是未初始化的 self.hp
-                self.moves_per_turn = cfg["nMovesPerTurn"]
+                self.hp = self.max_hp  # 直接使用 max_hp，而不是未初始化的 self.hp
                 self.treasure_id = cfg["nTreasureID"]
                 self.corpse_id = cfg["nCorpseID"]
                 self.attack_mode_ids = cfg["vAttackModes"]
@@ -40,25 +38,21 @@ init python:
             self.b_dead = False
             self.skills = []    # 静态持有的特长/技能ID列表
             self.active_conditions = [] # 动态 ActiveCondition 挂载实例列表
-            
-        def get_actor_avatar_path(creature_id):
-            """
-            根据生物 ID 返回头像图片路径。
-            玩家 ID 为 0，敌人从 1 开始编号。
-            """
-            if creature_id == 0:  # 玩家
-                return "images/avatar_player.png"
+
+            # 敌人随机初始疲劳值
+            if is_player:
+                self.fatigue = 0.0
             else:
-                return f"images/avatar_creature_{creature_id}.png"
-        
-        # 备用：如果图片不存在，返回默认占位
-        def get_actor_avatar_path_safe(creature_id):
-            """带默认降级的头像路径获取函数"""
-            import os
-            path = get_actor_avatar_path(creature_id)
-            if os.path.exists(path):
-                return path
-            return "images/avatar_default.png"    
+                import random
+                self.fatigue = random.uniform(0, 30)
+                fatigue_on_spawn = cfg.get("fFatigueOnSpawn", None)
+                if fatigue_on_spawn is not None:
+                    self.fatigue = float(fatigue_on_spawn)
+                else:
+                    self.fatigue = random.uniform(0, 30)
+
+            if not is_player:
+                update_fatigue_condition(self)
 
         @property
         def avatar(self):
@@ -93,11 +87,14 @@ init python:
                     for ac in self.active_conditions:
                         if ac.id == condition_id: return
                 self.active_conditions.append(ActiveCondition(condition_id))
+        
+        def remove_condition(self, condition_id):
+            """移除指定的状态"""
+            self.active_conditions = [ac for ac in self.active_conditions if ac.id != condition_id]
 
     CREATURES_DB[1] = {
         "strName": "野狗",
         "fMaxHP": 30.0,
-        "nMovesPerTurn": 3,
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [101, 102],  # 撕咬、爪击
@@ -105,23 +102,20 @@ init python:
     CREATURES_DB[2] = {
         "strName": "流浪者",
         "fMaxHP": 50.0,
-        "nMovesPerTurn": 4,
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [1, 2],  # 徒手、钝器重击
     }
     CREATURES_DB[3] = {
         "strName": "普通枯萎兽",
-        "fMaxHP": 30.0,
-        "nMovesPerTurn": 2,
+        "fMaxHP": 35.0,
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [101],  # 撕咬
     }
     CREATURES_DB[4] = {
         "strName": "巨大枯萎兽",
-        "fMaxHP": 90.0,
-        "nMovesPerTurn": 3,
+        "fMaxHP": 110.0,
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [101, 102, 103],  # 撕咬、爪击、冲撞
@@ -129,7 +123,6 @@ init python:
     CREATURES_DB[5] = {
         "strName": "肿胀兽",
         "fMaxHP": 40.0,
-        "nMovesPerTurn": 2,
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [101, 103, 108],  # 撕咬、冲撞、自爆
@@ -137,7 +130,6 @@ init python:
     CREATURES_DB[6] = {
         "strName": "幼芽寄生体",
         "fMaxHP": 25.0,
-        "nMovesPerTurn": 1,
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [106],  # 藤蔓抽打
@@ -145,23 +137,20 @@ init python:
     CREATURES_DB[7] = {
         "strName": "辐射蟑螂",
         "fMaxHP": 20.0,
-        "nMovesPerTurn": 2,
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [101, 104],  # 撕咬、酸液喷射
     }
     CREATURES_DB[8] = {
         "strName": "变异吸血虫",
-        "fMaxHP": 30.0,
-        "nMovesPerTurn": 2,
+        "fMaxHP": 25.0,
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [105],  # 毒刺穿刺
     }
     CREATURES_DB[9] = {
         "strName": "普通掠夺者",
-        "fMaxHP": 60.0,
-        "nMovesPerTurn": 3,
+        "fMaxHP": 80.0,
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [1, 2, 3, 5],  # 徒手、钝器重击、砍刀、手枪
@@ -169,15 +158,13 @@ init python:
     CREATURES_DB[10] = {
         "strName": "疯狂掠夺者",
         "fMaxHP": 50.0,
-        "nMovesPerTurn": 4,
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [1, 2, 3, 108, 109],  # 徒手、钝器、砍刀、自爆、燃烧瓶
     }
     CREATURES_DB[11] = {
         "strName": "军械残兵",
-        "fMaxHP": 80.0,
-        "nMovesPerTurn": 4,
+        "fMaxHP": 70.0,
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [6, 199, 110],  # 步枪、压制射击、破片手雷

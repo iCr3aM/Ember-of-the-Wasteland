@@ -16,14 +16,7 @@ screen scr_hud():
         vbox:
             spacing 5
             
-            hbox:            # 第一行：背包按钮 + 时间显示
-                spacing 20
-                textbutton "背包":
-                    xsize 80
-                    ysize 30
-                    background Solid("#444444")
-                    hover_background Solid("#666666")
-                    action Show("scr_inventory", inv_instance=player_inventory)
+            hbox:            # 时间显示
                 text "时间: [game_time['hour']]:00" size 20 color "#ffffff"
             
             hbox:            # 第二行：状态条

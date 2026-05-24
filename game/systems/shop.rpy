@@ -78,7 +78,7 @@ init python:
         merchant_inv.remove_item(item_instance)
         player_inv.add_item(item_instance)
         renpy.notify(f"购入 {item_instance.config.name}，花费 {price:.0f} 支香烟。")
-        renpy.restart_interaction()  # ← 新增：强制刷新界面，移除已购买的物品
+        renpy.restart_interaction()  # ← 强制刷新界面，移除已购买的物品
         return True
     
     def shop_execute_sell(player_inv, merchant_inv, item_instance, shop_type=SHOP_TYPE_WASTELAND_TRADER, barter_rate=1.0):
