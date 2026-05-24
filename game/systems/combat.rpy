@@ -24,21 +24,43 @@ init python:
     # 闪避基础值
     BASE_DODGE_CHANCE = 0.10  # 基础闪避率 10%
 
+    _current_combat_instance = None
+
 
     class CombatSystem:
         def __init__(self, player, enemy_instance):
             self.player = player
             self.enemy = enemy_instance
-            self.range = 12
+            self.range = renpy.random.randint(8, 16) # 初始距离随机在 8-16 米之间
             self.combat_log = ["战斗开始！你遭遇了 " + enemy_instance.name]
             self.is_finished = False
             self.winner = None
+            self.player_turn_disabled_by_inventory = False
             self.loot_drops = []
             self.corpse_searched = False
             self.is_player_turn = True
             self.player_acted_this_turn = False
+            self.player_faint_counter = 0
+            self.enemy_faint_counter = 0
 
-        # ================== 新增：命中率相关方法 ==================
+        def fade_out_music(self):
+            """战斗开始时淡出背景音乐（1.5秒渐弱）。"""
+            if renpy.music.get_playing():
+                renpy.music.stop(fadeout=1.5)
+        
+        def restore_music(self):
+            """战斗结束后恢复大地图探索音乐。"""
+            renpy.music.play("audio/bgm_explore.mp3", fadein=1.0, loop=True)
+
+
+        def can_player_act(self):
+            """检查玩家是否可以执行战术动作/攻击（非昏阙、未行动、战斗未结束）。"""
+            return (not self.player_acted_this_turn 
+                    and not self.is_finished 
+                    and not is_fainted(self.player)
+                    and not self.player_turn_disabled_by_inventory)
+
+        # ================== 命中率相关方法 ==================
         
         def calculate_hit_chance(self, attack_mode, is_player=True):
             """计算命中率"""
@@ -137,8 +159,20 @@ init python:
             user = self.player if is_player else self.enemy
             target = self.enemy if is_player else self.player
 
-            # 消耗战斗相关资源
-            consume_combat_costs(user, 'battle_move')
+            # 消耗战斗相关资源（使用 BattleMove 实例的消耗属性）
+            user.hunger = min(100.0, user.hunger + move_instance.hunger_cost)
+            user.thirst = min(100.0, user.thirst + move_instance.thirst_cost)
+            user.fatigue = min(100.0, user.fatigue + move_instance.fatigue_cost)
+            if user.thirst >= 100.0:
+                user.b_dead = True
+            # 更新状态
+            update_thirst_condition(user)
+            update_fatigue_condition(user)
+
+            # 昏阙检测
+            if check_and_apply_faint(user, combat_instance=self, is_player=is_player):
+                return
+
             if user.b_dead:
                 self.is_finished = True
                 self.winner = target
@@ -158,18 +192,35 @@ init python:
             if is_player:
                 self.player_acted_this_turn = True
 
-        # ================== 重写：执行攻击（加入命中率计算） ==================
+        # ================== 执行攻击（加入命中率计算） ==================
         
         def execute_attack(self, attack_mode, is_player=True):
-            """执行直接伤害攻击（重写为包含命中率计算）"""
+            """执行直接伤害攻击（包含命中率计算）"""
             if self.is_finished:
                 return
             
             user = self.player if is_player else self.enemy
             target = self.enemy if is_player else self.player
             
-            # 消耗战斗相关资源
-            consume_combat_costs(user, 'attack')
+            # 消耗战斗相关资源 — 直接使用 AttackMode 实例的消耗属性
+            hunger_mod = user.get_modifier_multiplier('fHungerRate')
+            thirst_mod = user.get_modifier_multiplier('fThirstRate')
+            fatigue_mod = user.get_modifier_multiplier('fFatigueRate')
+
+            user.hunger = min(100.0, user.hunger + attack_mode.hunger_cost * hunger_mod)
+            user.thirst = min(100.0, user.thirst + attack_mode.thirst_cost * thirst_mod)
+            user.fatigue = min(100.0, user.fatigue + attack_mode.fatigue_cost * fatigue_mod)
+
+            if user.thirst >= 100.0:
+                user.b_dead = True
+
+            update_thirst_condition(user)
+            update_fatigue_condition(user)
+
+            # 昏阙检测
+            if check_and_apply_faint(user, combat_instance=self, is_player=is_player):
+                return
+
             if user.b_dead:
                 self.is_finished = True
                 self.winner = target
@@ -216,7 +267,7 @@ init python:
             
             # 应用伤害
             target.hp -= raw_dmg
-            target.hp = max(0, target.hp)
+            clamp_hp(target)
             
             self.combat_log.append(
                 f"{user.name} 使用 [{attack_mode.name}] 击中了 {target.name}，"
@@ -236,7 +287,7 @@ init python:
                 target.b_dead = True
                 self.is_finished = True
                 self.winner = user
-                self.loot_drops = LootTable.roll_loot(target.treasure_id)
+                self.loot_drops = LootTable.roll_loot(target.treasure_id, overall_chance=0.6)  # ★ 60%概率掉落
                 self.corpse_searched = False
                 self.combat_log.append(f"{target.name} 已经倒在了废土血泊中。")
                 if self.loot_drops:
@@ -248,10 +299,14 @@ init python:
         # ================== 重写：敌人AI（智能决策） ==================
         
         def enemy_ai_turn(self):
-            """敌人AI回合 - 新增智能判定"""
+            """敌人AI回合 - 智能判定"""
             if self.is_finished:
                 return
             
+            # 敌人昏阙检测
+            if check_and_apply_faint(self.enemy, combat_instance=self):
+                return
+
             if self.is_player_turn:
                 return
             
@@ -269,7 +324,7 @@ init python:
                     self.execute_battle_move(escape_moves[0], is_player=False)
                     self.is_player_turn = True
                     return
-            
+
             # 2. 被缠绕/无法近身 => 使用远程攻击
             entangled = any(ac.id == COND_ENTANGLED for ac in self.enemy.active_conditions)
             if entangled and self.range > 2:
@@ -290,7 +345,7 @@ init python:
                     return
                 else:
                     # 无法行动，跳过回合
-                    self.combat_log.append(f"{self.enemy.name} 在原地徘徊，无法发动有效攻击。")
+                    self.combat_log.append(f"{self.enemy.name} 在原地等待，无法发动有效攻击。")
                     self.is_player_turn = True
                     return
             
@@ -312,17 +367,26 @@ init python:
             else:
                 self.combat_log.append(f"{self.enemy.name} 似乎有点不知所措。")
             self.is_player_turn = True
+            renpy.restart_interaction()
 
         # ================== 保留原有 end_turn 和 search_corpse ==================
         
         def end_turn(self):
             """结束己方回合 - 切换到敌人回合"""
             if not self.is_finished and self.is_player_turn:
+                # ★ 检查背包禁用标记，如果已禁用则记录日志 ★
+                if self.player_turn_disabled_by_inventory:
+                    self.player_turn_disabled_by_inventory = False
+                    self.combat_log.append("你因为操作背包而浪费了本回合的行动机会！")
+                elif not self.player_acted_this_turn:
+                    # ★ 如果玩家什么都没做就点击结束回合，也给予提示 ★
+                    self.combat_log.append("你选择谨慎行事，没有做出任何行动就结束了本回合。")
+                
+                # 昏阙自动恢复检查
+                faint_recovery_check(self)
                 self.is_player_turn = False
-                self.player_acted_this_turn = False  # 重置标记
-                # 立即触发敌人AI
+                self.player_acted_this_turn = False
                 self.enemy_ai_turn()
-                # 强制屏幕重新渲染，刷新按钮可用状态
                 renpy.restart_interaction()
 
         def search_corpse(self):
@@ -337,3 +401,5 @@ init python:
                 player_inventory.add_item(item)
                 self.combat_log.append(f"你从尸体上获得了 {item.config.name}。")
             self.loot_drops = []
+
+    

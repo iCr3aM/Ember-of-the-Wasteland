@@ -45,9 +45,9 @@ init python:
 
                     # 特殊位置标记 (需要结合新地图调整坐标)
                     special = None
-                    if (x, y) == (4, 5): # 示例：地图中间
+                    if (x, y) == (10, 5):  # 地图中间偏左
                         special = "merchant"
-                    elif (x, y) == (9, 9): # 示例：右下角
+                    elif (x, y) == (18, 8):  # 地图右下区域
                         special = "city"
                     elif terrain == "lake":
                         special = "lake_water"
@@ -55,23 +55,23 @@ init python:
                     self.grid[(x, y)] = HexTile(terrain_type=terrain, treasure_id=tid, special_feature=special)            
 
 # 关键：这些 default 变量会被存档/读档管理
-default map_width = 10
+default map_width = 20
 default map_height = 10
 
 default world_map = WorldMap(
     1, "废土地图",
     map_width,
     map_height,
-    """3,3,3,3,3,3,3,3,0,0
-3,3,3,3,3,3,3,3,0,0
-28,28,3,3,3,3,3,3,2,2
-28,28,28,3,3,3,3,28,2,2
-3,28,28,3,3,3,28,28,1,2
-3,3,28,3,3,3,28,28,1,2
-28,3,3,28,28,28,28,3,2,2
-28,28,3,3,28,28,28,3,2,2
-3,28,28,28,28,3,3,28,4,4
-4,4,28,28,28,28,3,28,4,4"""
+    """3,3,3,3,3,3,3,3,28,28,28,28,3,3,3,28,2,2,0,0
+3,3,3,28,28,28,28,28,28,28,28,1,28,3,3,3,28,2,0,0
+28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,3,28,2,2,0
+28,28,28,28,3,3,3,3,28,28,28,28,28,28,28,28,28,2,2,0
+3,28,28,28,3,1,3,3,28,28,28,28,1,28,28,28,28,2,2,0
+3,3,28,28,3,3,3,28,28,28,28,28,28,28,28,28,28,2,2,0
+28,3,3,28,28,28,28,28,28,28,28,28,28,3,3,28,28,28,2,2
+28,28,3,3,28,28,28,28,28,28,28,28,3,3,3,28,28,4,4,4
+28,28,28,28,28,28,3,3,28,1,28,3,3,3,3,28,4,4,4,4
+28,28,28,28,28,28,3,3,28,28,28,3,3,3,28,4,4,4,4,4"""
 )
 
 
@@ -111,9 +111,20 @@ init python:
             return False, None
 
         tile.scavenged = True
-        consume_travel_costs(player_stats, steps=0.5)
+        player_stats.hunger = min(100.0, player_stats.hunger + SCAVENGE_COSTS['hunger'])
+        player_stats.thirst = min(100.0, player_stats.thirst + SCAVENGE_COSTS['thirst'])
+        player_stats.fatigue = min(100.0, player_stats.fatigue + SCAVENGE_COSTS['fatigue'])
         update_thirst_condition(player_stats)
         update_fatigue_condition(player_stats)
+
+        # 战利品掉落
+        dropped_items = loot_random_scavenge(player_inventory=player_inventory)
+        if dropped_items:
+            item_names = "、".join(item.config.name for item in dropped_items)
+            renpy.notify(f"搜刮到了：{item_names}")
+        else:
+            renpy.notify("你翻遍了废墟，一无所获。")
+            
         event_code = trigger_random_map_event()
         return True, event_code
 
@@ -126,8 +137,8 @@ init python:
 
         # 检查目标格子是否可通行
         tile = world_map.grid.get((target_x, target_y))
-        if tile and tile.terrain_type in ("ocean", "lake"):
-            renpy.notify("那里是{0}，你无法穿越。".format(get_map_tile_label(tile.terrain_type)))
+        if tile and tile.terrain_type in ("ocean"):
+            renpy.notify("那里是一望无际的{0}，你无法穿越。".format(get_map_tile_label(tile.terrain_type)))
             return None
 
         # 移动推动时间流逝：每走一格过去1小时

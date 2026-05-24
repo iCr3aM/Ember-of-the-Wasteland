@@ -42,10 +42,17 @@ init python:
         # 使用颜色占位符代替实际头像资源
         return Solid("#555555")
 
+init python:
+    BIRTH_ZONE = [(3, 3), (3, 4), (4, 3), (4, 4)]
+
     def initialize_game_systems():
-        global player_stats, player_inventory, active_quests
+        global player_stats, player_inventory, active_quests, player_hex_x, player_hex_y
+        
+        # 只在第一次初始化时随机出生点
         if player_stats is None:
             player_stats = ActorInstance(creature_id=0, is_player=True)
+            import random
+            player_hex_x, player_hex_y = random.choice(BIRTH_ZONE)
 
         if player_inventory is None:
             player_inventory = Inventory()
