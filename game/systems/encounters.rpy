@@ -50,7 +50,7 @@ label encounter_lake_water:
             "你双膝跪地，双手撑在泥泞里，像野兽一样把脸埋进水中，大口大口地吞咽。"
             "水是温热的，带着浓重的金属腥味，但顺着喉咙流下去的那一刻，你感觉自己仿佛重获新生。"
 
-            call drink_lake_water_consequence
+            call drink_lake_water_consequence from _call_drink_lake_water_consequence
 
             jump travel_on_wasteland_loop
 

@@ -93,8 +93,6 @@ init python:
         112: use_antibiotic,       # 抗生素 - 去除中毒
         113: use_bandage,          # 绷带 - 止血（去流血）
         103: use_first_aid_kit,    # 急救包 - 恢复生命
-        # 后续可以添加更多：
-        # 103: use_first_aid_kit,  # 急救包
     }
 
 init python:
