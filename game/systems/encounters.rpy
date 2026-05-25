@@ -9,6 +9,8 @@ init -190 python:   #优先级
     EVENT_ENCOUNTER_AMBUSH = 2002
     TEST_ENEMY_IDS = [1, 3, 4, 7, 9, 11] 
 
+    TEST_ENEMY_IDS = [1, 3, 4, 7, 9, 11] 
+
 
     EVENT_CONFIG = {
         EVENT_ENCOUNTER_DEFAULT: {
@@ -92,12 +94,31 @@ label drink_lake_water_consequence:
 
 label event_encounter_default:
 
+
     python:
         import random
         # 从测试敌人列表中随机选择一个
         creature_id = random.choice(TEST_ENEMY_IDS)
         enemy = ActorInstance(creature_id=creature_id, is_player=False)
+        import random
+        # 从测试敌人列表中随机选择一个
+        creature_id = random.choice(TEST_ENEMY_IDS)
+        enemy = ActorInstance(creature_id=creature_id, is_player=False)
         combat_instance = CombatSystem(player_stats, enemy)
+        # 在战斗日志中显示敌人名称
+        combat_instance.combat_log = [f"你遇到了一个敌人：{enemy.name}！"]
+    
+    # 根据敌人类型显示不同的遭遇文本
+    if enemy.id == 1:  # 野狗
+        "一阵低沉的咆哮从灌木丛后响起，一只皮包骨的野狗正龇牙咧嘴地盯着你。"
+    elif enemy.id in [3, 4]:  # 枯萎兽系列
+        "浓密的植被中传来低沉的嘶吼声，一个扭曲的身影从阴影中缓缓显现……"
+    elif enemy.id == 7:  # 辐射蟑螂
+        "地面传来窸窸窣窣的声响，一只巨大的甲壳生物从碎石堆中钻了出来。"
+    elif enemy.id in [9, 11]:  # 人类敌人
+        "前方传来了人声——但这片废土上，陌生人往往比野兽更危险。"
+    
+    $ _current_combat_instance = combat_instance
         # 在战斗日志中显示敌人名称
         combat_instance.combat_log = [f"你遇到了一个敌人：{enemy.name}！"]
     
@@ -119,6 +140,12 @@ label event_encounter_default:
 
     # 更安全的类型检查
     if encounter_result and isinstance(encounter_result, tuple) and encounter_result[0] == "combat_end_trigger":
+    $ _return_value = _return
+    $ _current_combat_instance = None
+    $ encounter_result = _return_value
+
+    # 更安全的类型检查
+    if encounter_result and isinstance(encounter_result, tuple) and encounter_result[0] == "combat_end_trigger":
         if encounter_result[1] == player_stats:
             "你从战斗中幸存下来，身上的伤痕提醒你这片废土依然凶险。"
         else:
@@ -127,19 +154,24 @@ label event_encounter_default:
     jump travel_on_wasteland_loop
 
 # ==========================================================
+# ==========================================================
 # 死亡标签
 # ==========================================================
 label game_over_dehydration:
     $ player_stats.b_dead = False
 
+
     "你因极度脱水倒下，四周的景象渐渐模糊成一片白光。"
     "这一切都在饥渴与疲惫之中终结。"
+
 
     $ renpy.full_restart()
 
 label event_city_arrival:
 
+
     "你抵达了（城市名称）。这座由废墟重建的聚居地虽然简陋，但充满了生机。"
+
 
     # 在这里可以：接取任务，休息，交易等。
     window hide
@@ -156,19 +188,25 @@ label event_city_arrival_menu:
             call screen scr_shop(player_inventory, merchant_inv)
             window show # 交易结束后恢复对话栏
 
+
             "交易完毕，你清点了一下背包。"
             "你整理好物资，回到了街道上。"
 
+
             jump event_city_arrival_menu  # ← 循环回到 menu，不会显示入场文字
 
+
         "离开这里，继续旅程":
+
 
             window hide
             jump travel_on_wasteland_loop
 
 label event_merchant_encounter:
 
+
     "一个风尘仆仆的废土商人正在树荫下歇脚，他的骆驼背上驮着满满的货箱。"
+
 
     window hide
     call event_merchant_encounter_menu from _call_event_merchant_encounter_menu  # ← 调用子标签
@@ -183,12 +221,16 @@ label event_merchant_encounter_menu:
             call screen scr_shop(player_inventory, merchant_inv)
             window show # 交易结束后恢复对话栏
 
+
             "交易完毕，你清点了一下背包。"
             "你整理好行囊，准备继续踏上废土之旅。"
 
+
             jump event_merchant_encounter_menu
 
+
         "没什么兴趣，继续赶路":
+
 
             window hide
             jump travel_on_wasteland_loop
@@ -198,13 +240,18 @@ label event_merchant_encounter_menu:
 label event_camp:
     # 防御性检查
     $ check_player_death(player_stats)
+    $ check_player_death(player_stats)
     
     # 检查疲劳值是否 >= 40
     if player_stats.fatigue < 40:
         "你还不算太累，现在扎营为时过早。"
+        "你还不算太累，现在扎营为时过早。"
         jump travel_on_wasteland_loop
     
     # 随机确定睡眠时长：6-8 小时
+    $ import random
+    $ camp_sleep_hours = random.randint(6, 8)
+    $ camp_sleeped_hours = 0
     $ import random
     $ camp_sleep_hours = random.randint(6, 8)
     $ camp_sleeped_hours = 0
@@ -233,7 +280,15 @@ label event_camp:
         if game_time['hour'] >= 24:
             $ game_time['hour'] = 0
             $ game_time['day'] += 1
+        $ camp_sleeped_hours += 1
         
+        # 推动世界时间流逝
+        $ game_time['hour'] += 1
+        if game_time['hour'] >= 24:
+            $ game_time['hour'] = 0
+            $ game_time['day'] += 1
+        
+        # 调用 tick_hour 模拟时间流逝（会增加饥饿、口渴、疲劳）
         # 调用 tick_hour 模拟时间流逝（会增加饥饿、口渴、疲劳）
         $ tick_hour(player_stats, 1)
         
@@ -245,6 +300,7 @@ label event_camp:
         $ player_stats.thirst = max(0.0, player_stats.thirst - 0.5 * METABOLISM_PER_HOUR['thirst'])
         
         # 检查是否在睡眠中死亡
+        $ check_player_death(player_stats)
         $ check_player_death(player_stats)
         
         # 继续下一小时
@@ -264,6 +320,14 @@ label event_camp:
         
         "现在时间是第 [game_time['day']] 天的 [game_time['hour']]:00。"
         
+        $ sleep_hours = camp_sleeped_hours
+        if sleep_hours == 1:
+            "你只睡了 1 个小时。"
+        else:
+            "你总共睡了 [sleep_hours] 个小时。"
+        
+        "现在时间是第 [game_time['day']] 天的 [game_time['hour']]:00。"
+        
         if player_stats.fatigue <= 0:
             "你精神饱满，又可以继续前进了。"
         
@@ -271,6 +335,28 @@ label event_camp:
         
         jump travel_on_wasteland_loop
 
+# ====================昏阙事件标签=====================
+label event_faint_collapse:
+    "你的身体终于到达了极限。"
+    "眼前的景象开始模糊，双膝不受控制地弯曲，世界在你的意识中缓慢地倾斜——"
+    "你失去了知觉。"
+    
+    # 睡眠恢复逻辑：一次睡满 8 小时
+    $ player_stats.fatigue = max(0.0, player_stats.fatigue - 80.0)
+    $ update_fatigue_condition(player_stats)
+    
+    # 睡眠期间消耗代谢（口渴、饥饿值继续增加）
+    $ tick_hour(player_stats, hours=8)
+    
+    # 如果睡眠后因口渴死亡
+    if player_stats.b_dead:
+        jump game_over_dehydration
+    
+    "……不知过了多久，你在一阵刺骨的寒冷中醒来。"
+    "阳光已经移动了位置——你睡了很久。"
+    
+    # 回到大地图
+    jump travel_on_wasteland_loop
 # ====================昏阙事件标签=====================
 label event_faint_collapse:
     "你的身体终于到达了极限。"
