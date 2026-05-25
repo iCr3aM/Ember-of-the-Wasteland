@@ -7,14 +7,10 @@ init python:
     class BattleMove:
         """对应 battlemoves.xml 战术动作结构"""
         def __init__(self, id, name, min_range, max_range, hunger_cost=0, thirst_cost=0, fatigue_cost=0, us_pre_conds=None, them_pre_conds=None, success_effects=None):
-        def __init__(self, id, name, min_range, max_range, hunger_cost=0, thirst_cost=0, fatigue_cost=0, us_pre_conds=None, them_pre_conds=None, success_effects=None):
             self.id = id
             self.name = name
             self.min_range = min_range
             self.max_range = max_range
-            self.hunger_cost = hunger_cost
-            self.thirst_cost = thirst_cost
-            self.fatigue_cost = fatigue_cost
             self.hunger_cost = hunger_cost
             self.thirst_cost = thirst_cost
             self.fatigue_cost = fatigue_cost
