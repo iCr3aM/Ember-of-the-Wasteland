@@ -16,12 +16,8 @@ init python:
         renpy.notify("已添加测试物品")
 
     def debug_open_shop_screen():
-        """打开测试用商城交易界面。"""
-        merchant_inv = Inventory()
-        merchant_inv.add_item_by_id(101)
-        merchant_inv.add_item_by_id(103)
-        merchant_inv.add_item_by_id(105)
-        renpy.show_screen("scr_shop", player_inventory, merchant_inv, barter_rate=1.0)
+        _current_trade_trader_config = MERCHANT_WASTELAND_TRADER
+        renpy.call_in_new_context("trade_flow")
 
     def debug_skip_to_map():
         global player_hex_x, player_hex_y, last_map_event_code
@@ -184,7 +180,7 @@ label start:
 
     # 如果此时音乐未在播放（从 splashscreen 进入时已在播，从其他地方进入可能没有）
     if not renpy.music.is_playing():
-        play music "music/your_main_menu_music.ogg" fadein 1.0
+        play music "bgm_menu.mp3" fadein 1.0
     
     python:
         # 激活内核单例

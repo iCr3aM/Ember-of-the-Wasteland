@@ -184,7 +184,7 @@ init python:
 
     ITEMS_DB[104] = ItemType(
         104,
-        "手枪弹匣",
+        "破旧手枪",
         weight=0.3,
         value=12.0,
         max_durability=1.0,

@@ -147,51 +147,75 @@ label event_city_arrival:
 label event_city_arrival_menu:
     menu:
         "进入交易区":
-            # 创建并显示商人界面
-            $ merchant_inv = Inventory()
-            $ merchant_inv.add_item_by_id(103)
-            $ merchant_inv.add_item_by_id(104)
-            $ merchant_inv.add_item_by_id(105)
-            window hide  # 隐藏对话栏
-            call screen scr_shop(player_inventory, merchant_inv)
-            window show # 交易结束后恢复对话栏
-
+            $ _current_trade_trader_config = MERCHANT_CITY_TRADER
+            window hide
+            call trade_flow from _call_trade_flow_city
+            window show
             "交易完毕，你清点了一下背包。"
             "你整理好物资，回到了街道上。"
-
-            jump event_city_arrival_menu  # ← 循环回到 menu，不会显示入场文字
+            jump event_city_arrival_menu
 
         "离开这里，继续旅程":
-
             window hide
             jump travel_on_wasteland_loop
-
 label event_merchant_encounter:
 
     "一个风尘仆仆的废土商人正在树荫下歇脚，他的骆驼背上驮着满满的货箱。"
 
     window hide
     call event_merchant_encounter_menu from _call_event_merchant_encounter_menu  # ← 调用子标签
-label event_merchant_encounter_menu:    
+label event_merchant_encounter_menu:
     menu:
         "看看他卖些什么":
-            $ merchant_inv = Inventory()
-            $ merchant_inv.add_item_by_id(101)
-            $ merchant_inv.add_item_by_id(102)
-            $ merchant_inv.add_item_by_id(201)
-            window hide  # 隐藏对话栏
-            call screen scr_shop(player_inventory, merchant_inv)
-            window show # 交易结束后恢复对话栏
-
+            $ _current_trade_trader_config = MERCHANT_WASTELAND_TRADER
+            window hide
+            call trade_flow from _call_trade_flow_merchant
+            window show
             "交易完毕，你清点了一下背包。"
             "你整理好行囊，准备继续踏上废土之旅。"
-
             jump event_merchant_encounter_menu
 
         "没什么兴趣，继续赶路":
-
             window hide
             jump travel_on_wasteland_loop
+
+label trade_flow:
+    $ trader_config = _current_trade_trader_config
+    $ merchant_inv = get_merchant_inventory(trader_config)
+    $ barter_rate_value = 1.0
+    call screen scr_shop(
+        player_inventory,
+        merchant_inv,
+        shop_type=trader_config.shop_type,
+        barter_rate=barter_rate_value,
+        merchant_avatar=trader_config.avatar_path,
+        merchant_name=trader_config.name
+    )
+    # ★ 此处不再写对话文本，由调用方在 call 之后负责 ★
+    $ _current_trade_trader_config = None
+    return
+
+label merchant_encounter_loop:
+    $ tile = get_current_tile()
+    if tile is None or tile.special_feature != "merchant":
+        return
+
+    "你发现了一个商人，他的货架上摆满了各种物资。"
+    menu:
+        "上前看看有什么好东西":
+            $ trader_config = MERCHANT_DB.get(tile.merchant_id, MERCHANT_WASTELAND_TRADER)
+            $ _current_trade_trader_config = trader_config
+            window hide
+            call trade_flow
+            window show
+            "交易完毕，你清点了一下背包。"            
+            "你整理好行囊，准备继续踏上废土之旅。"    
+            jump merchant_encounter_loop
+
+        "径直路过，不感兴趣":
+            "你扫了一眼货摊，加快脚步继续赶路。"
+            return
+
 # ============================================================
 # 扎营休息标签
 # ============================================================

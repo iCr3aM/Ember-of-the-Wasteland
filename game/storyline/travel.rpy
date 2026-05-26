@@ -45,9 +45,10 @@ label travel_on_wasteland_loop:
         if fainted:
             jump event_faint_collapse
 
-        if current_tile and current_tile.special_feature == "merchant":
-            # 直接跳转到商人事件
-            jump event_merchant_encounter
+        elif current_tile and current_tile.special_feature == "merchant":
+            # 调用商人事件循环（让玩家可以反复交易，直到选择离开）
+            call merchant_encounter_loop
+            jump travel_on_wasteland_loop
         elif current_tile and current_tile.special_feature == "city":
             # 直接跳转到城市事件
             jump event_city_arrival

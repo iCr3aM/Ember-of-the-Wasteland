@@ -31,7 +31,9 @@ define config.version = "0.3PreView"
 
 define gui.about = _p("""由《末日拾荒者》、《辐射》系列游戏受启发的废土生存 RPG 游戏，融合了资源管理、回合制战斗和动态事件系统。探索荒芜的世界，收集物资，面对危险的敌人，并揭开隐藏在废土背后的秘密。
 
-由 Cr3aM 制作，使用 Ren'Py 引擎开发。 - 仅供内部测试和反馈。请勿分发或公开展示此版本。
+由 Cr3aM 制作，使用 Ren'Py 引擎开发。
+
+- 仅供内部测试和反馈。请勿分发或公开展示此版本。
 
 {color=#FFD700}支持者：MacHowskl、EDDIE、LeC、ganla1{/color}
 """)

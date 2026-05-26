@@ -5,14 +5,12 @@
 # =============================================================================
 init python:
     class HexTile:
-        def __init__(self, terrain_type, treasure_id, special_feature=None):
-            self.terrain_type = terrain_type # "forest", "plains", "city_ruins"
-            self.treasure_id = treasure_id   # 该地块搜刮对应的掉落表 ID
-            # 标记该位置是否已被玩家搜刮过
-            # 初始值为 False（未搜刮），搜刮后变为 True
-            # 用于控制搜刮按钮的行为和地图显示
-            self.scavenged = False  # 该地块是否已被搜刮
+        def __init__(self, terrain_type, treasure_id, special_feature=None, merchant_id=None):
+            self.terrain_type = terrain_type
+            self.treasure_id = treasure_id
+            self.scavenged = False
             self.special_feature = special_feature  # "lake_water", "merchant", "city", None
+            self.merchant_id = merchant_id
 
     class WorldMap:
         """大地图网络矩阵"""
@@ -45,14 +43,17 @@ init python:
 
                     # 特殊位置标记 (需要结合新地图调整坐标)
                     special = None
+                    merchant_id = None
                     if (x, y) == (10, 5):  # 地图中间偏左
                         special = "merchant"
+                        merchant_id = "wasteland_trader_01"
                     elif (x, y) == (18, 8):  # 地图右下区域
                         special = "city"
+                        merchant_id = "city_trader_01"
                     elif terrain == "lake":
                         special = "lake_water"
 
-                    self.grid[(x, y)] = HexTile(terrain_type=terrain, treasure_id=tid, special_feature=special)            
+                    self.grid[(x, y)] = HexTile(terrain_type=terrain, treasure_id=tid, special_feature=special, merchant_id=merchant_id)          
 
 # 关键：这些 default 变量会被存档/读档管理
 default map_width = 20
