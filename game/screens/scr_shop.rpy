@@ -4,7 +4,7 @@
 # =============================================================================
 screen scr_shop(player_inv, merchant_inv, shop_type="wasteland_trader", barter_rate=1.0, merchant_avatar=None, merchant_name="流浪商人"):
     modal True
-    zorder 200 
+    zorder 50 
     # 全屏覆盖层，确保不透过任何底层内容
     frame:
         xsize config.screen_width
@@ -181,6 +181,6 @@ screen scr_shop(player_inv, merchant_inv, shop_type="wasteland_trader", barter_r
     # 底部退出按钮
     textbutton "打包物资安全离开":
         xalign 0.5 ypos 0.88
-        action Return() 
+        action Return()
         style "button"
         text_size 20

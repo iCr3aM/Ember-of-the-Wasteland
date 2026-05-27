@@ -85,19 +85,18 @@ init python:
             5. 添加到玩家背包
         """
         global player_stats
-        
         price = get_shop_price(item_instance, shop_type, buy=True, barter_rate=barter_rate)
         
         if not shop_can_afford(player_stats, price):
             renpy.notify(f"香烟不足！需要 {price} 支，当前只有 {player_stats.cigarettes:.0f} 支。")
-            return False
-        
+            return
+        # 执行交易扣款与物品转移
         shop_apply_payment(player_stats, price)
         merchant_inv.remove_item(item_instance)
         player_inv.add_item(item_instance)
+
         renpy.notify(f"购入 {item_instance.config.name}，花费 {price:.0f} 支香烟。")
-        renpy.restart_interaction()  
-        return True
+        return
     
     def shop_execute_sell(player_inv, merchant_inv, item_instance, shop_type=SHOP_TYPE_WASTELAND_TRADER, barter_rate=1.0):
         """
@@ -112,13 +111,13 @@ init python:
         global player_stats
         
         price = get_shop_price(item_instance, shop_type, buy=False, barter_rate=barter_rate)
-        
+        # 执行物品转移与资金增加
         player_inv.remove_item(item_instance)
         merchant_inv.add_item(item_instance)
         shop_apply_income(player_stats, price)
+
         renpy.notify(f"卖出 {item_instance.config.name}，获得 {price:.0f} 支香烟。")
-        renpy.restart_interaction()  
-        return True
+        return
 
         # 不同地区的商人定义
     MERCHANT_WASTELAND_TRADER = MerchantConfig(

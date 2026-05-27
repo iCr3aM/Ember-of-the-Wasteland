@@ -47,9 +47,6 @@ init python:
                     if (x, y) == (10, 5):  # 地图中间偏左
                         special = "merchant"
                         merchant_id = "wasteland_trader_01"
-                    elif (x, y) == (18, 8):  # 地图右下区域
-                        special = "city"
-                        merchant_id = "city_trader_01"
                     elif terrain == "lake":
                         special = "lake_water"
 

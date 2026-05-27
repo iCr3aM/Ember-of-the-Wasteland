@@ -46,12 +46,9 @@ label travel_on_wasteland_loop:
             jump event_faint_collapse
 
         elif current_tile and current_tile.special_feature == "merchant":
-            # 调用商人事件循环（让玩家可以反复交易，直到选择离开）
-            call merchant_encounter_loop
+            # 商人地块：不触发任何事件文本，由地图界面上的"进行交易"按钮处理
+            "你来到了一个商人的摊点前。"
             jump travel_on_wasteland_loop
-        elif current_tile and current_tile.special_feature == "city":
-            # 直接跳转到城市事件
-            jump event_city_arrival
         elif current_tile and current_tile.special_feature == "lake_water":  
             # 直接跳转到湖水事件
             jump encounter_lake_water                                        
@@ -88,9 +85,35 @@ label travel_on_wasteland_loop:
                 "你已经搜刮过这里了。"
             jump travel_on_wasteland_loop
 
+    elif action_result == "merchant_trade":
+        # 获取当前地块的商人配置
+        python:
+            current_tile = world_map.grid.get((player_hex_x, player_hex_y))
+            merchant_cfg = MERCHANT_DB.get(current_tile.merchant_id, MERCHANT_WASTELAND_TRADER)
+            merchant_inv = get_merchant_inventory(merchant_cfg)
+
+        "商人上下打量了你一眼，将手里攥着的防身刀往怀里收了收。"
+            
+        call screen scr_shop(
+            player_inv=player_inventory,
+            merchant_inv=merchant_inv,
+            shop_type=merchant_cfg.shop_type,
+            barter_rate=1.0,
+            merchant_avatar=merchant_cfg.avatar_path,
+            merchant_name=merchant_cfg.name
+        )
+        "交易完毕，你清点了一下背包。"
+        "你整理好行囊，准备继续踏上废土之旅。"
+        jump travel_on_wasteland_loop
+
     elif action_result == "camp":
         jump event_camp
 
     else:
         # 兜底防御，防止未知指令导致死循环报错
         jump travel_on_wasteland_loop
+
+#label trade_conclusion:
+    #"交易完毕，你清点了一下背包。"
+    #"你整理好行囊，准备继续踏上废土之旅。"
+    #jump travel_on_wasteland_loop

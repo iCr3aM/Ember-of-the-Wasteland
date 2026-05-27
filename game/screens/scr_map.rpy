@@ -6,7 +6,6 @@
 # # 定义：大地图视觉渲染界面，以及周边环境搜索小面板。
 # # 实现：高亮显示玩家所在格子和可移动范围，处理点击格子后的移动动画；点击搜索按钮时展示搜索风险与进度条。 
 # =============================================================================
-# ===== 在 init 块中定义 =====
 screen scr_map():
     modal True
 
@@ -56,8 +55,6 @@ screen scr_map():
                                         if tile:
                                             if tile.special_feature == "merchant":
                                                 text "商人" size 16 color "#ffd700" xalign 0.5 yalign 0.2
-                                            elif tile.special_feature == "city":
-                                                text "城市" size 16 color "#ffffff" xalign 0.5 yalign 0.2
 
                                         if x == player_hex_x and y == player_hex_y:
                                             text "你" size 22 color "#000000" xalign 0.5 yalign 0.5
@@ -85,6 +82,13 @@ screen scr_map():
                         action Return("scavenge")
                     textbutton "打开背包" action Show("scr_inventory", inv_instance=player_inventory) xfill True
                     textbutton "扎营休息" action Return("camp") xfill True
+                    
+                    # 如果当前位置是商人地块，显示“进行交易”按钮
+                    if current_tile is not None and current_tile.special_feature == "merchant":
+                        textbutton "进行交易" :
+                            xfill True
+                            action Return("merchant_trade")
+
                     null height 20
                     text "点击邻近格子即可移动。" size 14 color "#cccccc"
-                    text "移动会消耗饥饿、口渴与疲劳。" size 14 color "#cccccc"
+                    text "移动会消耗饥饿、增加口渴与疲劳。" size 14 color "#cccccc"

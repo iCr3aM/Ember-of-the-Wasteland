@@ -113,7 +113,7 @@ screen scr_combat(combat_instance):
                         # 使用 Show 调用屏幕。因 scr_inventory 有 modal True，
                         # 它会阻塞战斗界面，关闭后自然返回战斗，无需 Refresh 强制重绘。
                         action Show("scr_inventory", inv_instance=player_inventory)
-                        text "打开背包 (操作后消耗本回合)" align (0.5,0.5) size 18 color "#ffffff"
+                        text "打开背包" align (0.5,0.5) size 18 color "#ffffff"
                 null height 10  # 分隔                
 
                 # === 战术动作（带消耗显示） ===

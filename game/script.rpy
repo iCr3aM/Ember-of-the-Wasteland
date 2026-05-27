@@ -16,8 +16,16 @@ init python:
         renpy.notify("已添加测试物品")
 
     def debug_open_shop_screen():
-        _current_trade_trader_config = MERCHANT_WASTELAND_TRADER
-        renpy.call_in_new_context("trade_flow")
+        # 直接 Show scr_shop，不经过 trade_flow
+        merchant_cfg = MERCHANT_WASTELAND_TRADER
+        merchant_inv = get_merchant_inventory(merchant_cfg)
+        renpy.show_screen("scr_shop",
+            player_inv=player_inventory,
+            merchant_inv=merchant_inv,
+            shop_type=merchant_cfg.shop_type,
+            barter_rate=1.0,
+            merchant_avatar=merchant_cfg.avatar_path,
+            merchant_name=merchant_cfg.name)
 
     def debug_skip_to_map():
         global player_hex_x, player_hex_y, last_map_event_code
