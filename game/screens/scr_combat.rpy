@@ -194,6 +194,7 @@ screen scr_combat(combat_instance):
                         if combat_instance.winner == combat_instance.player:
                             text "战斗胜利" size 20 color "#4caf50" xalign 0.5
                             
+                            # 搜刮尸体按钮（只有击杀敌人才显示）
                             if not combat_instance.corpse_searched:
                                 button:
                                     xsize 240
@@ -201,14 +202,24 @@ screen scr_combat(combat_instance):
                                     background Solid("#556644")
                                     hover_background Solid("#778866")
                                     action Function(combat_instance.search_corpse)
-                                    # 让文字完美居中，大小调为 18
                                     text "搜刮尸体" align (0.5, 0.5) size 18 color "#ffffff"
                             else:
                                 button:
                                     xsize 240 ysize 45
-                                    background Solid("#444444") # 变成暗灰色框体
-                                    sensitive False            # 禁用点击，鼠标放上去不会有反应
-                                    text "尸体已被搜刮" align (0.5, 0.5) size 18 color "#aaaaaa"                        
+                                    background Solid("#444444")
+                                    sensitive False
+                                    text "尸体已被搜刮" align (0.5, 0.5) size 18 color "#aaaaaa"
+                                    
+                        elif combat_instance.winner == "player_escaped":
+                            text "你逃离了战场" size 20 color "#ffa726" xalign 0.5
+                            
+                        elif combat_instance.winner is None:
+                            text "敌人逃跑了" size 20 color "#ffa726" xalign 0.5
+                            
+                        else:  # 玩家失败
+                            text "战斗失败" size 20 color "#f44336" xalign 0.5
+                        
+                        # 脱离战场结算按钮（总是显示）
                         button:
                             xsize 240 ysize 45
                             background Solid("#775555")

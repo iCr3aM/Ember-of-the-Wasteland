@@ -43,6 +43,6 @@ init python:
     BATTLE_MOVES_DB[3] = BattleMove(3, "冲锋", 1, 10, hunger_cost=4, thirst_cost=4, fatigue_cost=4, success_effects={"range_change": -4})
     #BATTLE_MOVES_DB[4] = BattleMove(4, "寻找掩体", 4, 14, hunger_cost=3, thirst_cost=3, fatigue_cost=3, success_effects={"set_pose": "cover"})
     #BATTLE_MOVES_DB[5] = BattleMove(5, "防御", 1, 6, hunger_cost=2, thirst_cost=2, fatigue_cost=2, success_effects={"set_pose": "defend"})
-    #BATTLE_MOVES_DB[6] = BattleMove(6, "逃离战斗", 6, 16, hunger_cost=5, thirst_cost=5, fatigue_cost=5, success_effects={"range_change": 8})
+    BATTLE_MOVES_DB[6] = BattleMove(6, "逃离战斗", 5, 20, hunger_cost=5, thirst_cost=5, fatigue_cost=5, success_effects={"range_change": 8})
     #BATTLE_MOVES_DB[7] = BattleMove(7, "原地等待", 1, 16, hunger_cost=0, thirst_cost=0, fatigue_cost=0, success_effects={"range_change": 0})
     BATTLE_MOVES_DB[8] = BattleMove(8, "向前走", 1, 16, hunger_cost=1, thirst_cost=1, fatigue_cost=1, success_effects={"range_change": -1})

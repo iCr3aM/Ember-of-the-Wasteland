@@ -33,7 +33,7 @@ label prologue_start:
     # -------------------------------------------------------------------------
     scene bg quarantine_room with fade
 
-    play sound "audio/"
+    #play sound "audio/"
 
     "雨水砸在头顶某处生锈的铁皮上，沉闷而持续。"
 

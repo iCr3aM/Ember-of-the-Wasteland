@@ -2,11 +2,10 @@
 # # 定义：大地图探索时触发的“文本遭遇事件数据库”及选项响应链。
 # # 实现：解析玩家当前所拥有的技能（如“囤积狂”）或装备（如“撬棍”），动态显示或隐藏选项；处理选项后的跳转（如：走向战斗、获得宝藏、触发伤病、或跳向另一个 Encounter ID）。
 # =============================================================================
-
 # 事件编号统一管理
 init -190 python:   #优先级
     EVENT_ENCOUNTER_DEFAULT = 2001
-    EVENT_ENCOUNTER_AMBUSH = 2002
+    #EVENT_ENCOUNTER_ = 2002
     TEST_ENEMY_IDS = [1, 3, 4, 7, 9, 11] 
 
 
@@ -15,11 +14,11 @@ init -190 python:   #优先级
             "label": "event_encounter_default",
             "name": "丛林低吼",
             "type": "combat",
-        },
-        EVENT_ENCOUNTER_AMBUSH: {
-            "label": "event_encounter_ambush",
-            "name": "废弃检查站",
-            "type": "exploration",
+        #},
+        #EVENT_ENCOUNTER_: {
+            #"label": "event_",
+            #"name": "",
+            #"type": "",
         },
     }
 
@@ -116,14 +115,27 @@ label event_encounter_default:
     $ _return_value = _return
     $ _current_combat_instance = None
     $ encounter_result = _return_value
+    $ winner = None
 
-    # 更安全的类型检查
-    if encounter_result and isinstance(encounter_result, tuple) and encounter_result[0] == "combat_end_trigger":
-        if encounter_result[1] == player_stats:
-            "你从战斗中幸存下来，身上的伤痕提醒你这片废土依然凶险。"
-        else:
-            "你倒在了荒野之中，视野渐渐模糊。"
-            return
+    # 更安全的类型检查 - 使用 python 块处理
+    python:
+        if encounter_result and isinstance(encounter_result, (list, tuple)) and encounter_result[0] == "combat_end_trigger":
+            winner = encounter_result[1]
+
+    # 根据结果分支
+    if winner == player_stats:
+        # 玩家击杀敌人
+        "你从战斗中幸存下来，身上的伤痕提醒你这片废土依然凶险。"
+    elif winner == "player_escaped":
+        # 玩家主动逃离
+        "你成功甩开了敌人，安全地离开了战场。"
+    elif winner is None:
+        # 敌人逃跑
+        "敌人仓皇逃窜，消失在了荒野之中。"
+    else:
+        # 玩家失败
+        "你倒在了荒野之中，视野渐渐模糊。"
+        return
     jump travel_on_wasteland_loop
 
 # ==========================================================
@@ -179,21 +191,23 @@ label event_camp:
         $ camp_sleep_hours -= 1
         $ camp_sleeped_hours += 1
         
-        # 推动世界时间流逝
-        $ game_time['hour'] += 1
+        # 推进60分钟
+        $ game_time['minute'] += 60
+        $ _overflow = game_time['minute'] // 60
+        $ game_time['hour'] += _overflow
+        $ game_time['minute'] = game_time['minute'] % 60
         if game_time['hour'] >= 24:
             $ game_time['hour'] = 0
             $ game_time['day'] += 1
         
-        # 调用 tick_hour 模拟时间流逝（会增加饥饿、口渴、疲劳）
-        $ tick_hour(player_stats, 1)
+        # 调用 tick_minutes 模拟时间流逝（会增加饥饿、口渴、疲劳）
+        $ tick_minutes(player_stats, 60)
         
-        # 睡眠期间强制恢复疲劳：每小时减少 10 疲劳
+        # 睡眠恢复疲劳
         $ player_stats.fatigue = max(0.0, player_stats.fatigue - 10.0)
         
-        # 睡眠期间口渴值只按正常消耗的一半增加
-        # tick_hour 已经加了 METABOLISM_PER_HOUR['thirst']，这里减去一半
-        $ player_stats.thirst = max(0.0, player_stats.thirst - 0.5 * METABOLISM_PER_HOUR['thirst'])
+        # 睡眠期间口渴值减少
+        $ player_stats.thirst = max(0.0, player_stats.thirst - 0.5 * METABOLISM_PER_5MIN['thirst'] * 12)
         
         # 检查是否在睡眠中死亡
         $ check_player_death(player_stats)
@@ -233,7 +247,7 @@ label event_faint_collapse:
     $ update_fatigue_condition(player_stats)
     
     # 睡眠期间消耗代谢（口渴、饥饿值继续增加）
-    $ tick_hour(player_stats, hours=8)
+    $ tick_minutes(player_stats, minutes=480)  # 8小时 = 480分钟
     
     # 如果睡眠后因口渴死亡
     if player_stats.b_dead:

@@ -122,7 +122,7 @@ init python:
         # 不同地区的商人定义
     MERCHANT_WASTELAND_TRADER = MerchantConfig(
         merchant_id="wasteland_trader_01",
-        name="流动商人",
+        name="流浪商人",
         shop_type=SHOP_TYPE_WASTELAND_TRADER,
         avatar_path="images/merchant_wasteland.png",
         description="一个风尘仆仆的废土商人，他的骆驼背上驮着满满的货箱。",

@@ -17,7 +17,7 @@ screen scr_hud():
             spacing 5
             
             hbox:            # 时间显示
-                text "时间: [game_time['hour']]:00" size 20 color "#ffffff"
+                text "时间: [get_time_period_str(game_time['hour'])] (第 [game_time['day']] 天 [game_time['hour']]:[game_time['minute']:0>2])" size 20 color "#ffffff"
             
             hbox:            # 第二行：状态条
                 spacing 30

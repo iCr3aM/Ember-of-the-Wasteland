@@ -4,6 +4,7 @@
 # # 实现：动态生成玩家（Player）和敌人（NPC/Creature）的动态实例；计算属性修正，处理 AI 战斗意图（战或逃）。
 # =============================================================================
 init python:
+    import random
     class ActorInstance:
         """动态生物/NPC/玩家运行时类，彻底连接属性、状态、攻击与掉落"""
         def __init__(self, creature_id, is_player=False):
@@ -30,6 +31,15 @@ init python:
                 self.attack_mode_ids = cfg["vAttackModes"]
                 self.morale = 1.0
                 self.cigarettes = 0.0
+                self.is_human = cfg.get("is_human", False)
+                self.escape_rate = cfg.get("escape_rate", 0.0)
+                
+                # 敌人随机初始疲劳值
+                fatigue_on_spawn = cfg.get("fFatigueOnSpawn", None)
+                if fatigue_on_spawn is not None:
+                    self.fatigue = float(fatigue_on_spawn)
+                else:
+                    self.fatigue = random.uniform(0, 30)
             
             # 生物基础内呼吸三维
             self.hunger = 0.0   # 0-100, 100为极限饿死
@@ -38,18 +48,6 @@ init python:
             self.b_dead = False
             self.skills = []    # 静态持有的特长/技能ID列表
             self.active_conditions = [] # 动态 ActiveCondition 挂载实例列表
-
-            # 敌人随机初始疲劳值
-            if is_player:
-                self.fatigue = 0.0
-            else:
-                import random
-                self.fatigue = random.uniform(0, 30)
-                fatigue_on_spawn = cfg.get("fFatigueOnSpawn", None)
-                if fatigue_on_spawn is not None:
-                    self.fatigue = float(fatigue_on_spawn)
-                else:
-                    self.fatigue = random.uniform(0, 30)
 
             if not is_player:
                 update_fatigue_condition(self)
@@ -98,6 +96,8 @@ init python:
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [101, 102],  # 撕咬、爪击
+        "is_human": False,
+        "escape_rate": 0.2
     }
     CREATURES_DB[2] = {
         "strName": "流浪者",
@@ -105,6 +105,8 @@ init python:
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [1, 2],  # 徒手、钝器重击
+        "is_human": True,
+        "escape_rate": 0.6,
     }
     CREATURES_DB[3] = {
         "strName": "普通枯萎兽",
@@ -112,6 +114,8 @@ init python:
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [101],  # 撕咬
+        "is_human": False,
+        "escape_rate": 0.0,
     }
     CREATURES_DB[4] = {
         "strName": "巨大枯萎兽",
@@ -119,6 +123,8 @@ init python:
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [101, 102, 103],  # 撕咬、爪击、冲撞
+        "is_human": False,
+        "escape_rate": 0.0,
     }
     CREATURES_DB[5] = {
         "strName": "肿胀兽",
@@ -126,6 +132,8 @@ init python:
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [101, 103, 108],  # 撕咬、冲撞、自爆
+        "is_human": False,
+        "escape_rate": 0.0,
     }
     CREATURES_DB[6] = {
         "strName": "幼芽寄生体",
@@ -133,6 +141,8 @@ init python:
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [106],  # 藤蔓抽打
+        "is_human": False,
+        "escape_rate": 0.0,
     }
     CREATURES_DB[7] = {
         "strName": "辐射蟑螂",
@@ -140,6 +150,8 @@ init python:
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [101, 104],  # 撕咬、酸液喷射
+        "is_human": False,
+        "escape_rate": 0.0,
     }
     CREATURES_DB[8] = {
         "strName": "变异吸血虫",
@@ -147,6 +159,8 @@ init python:
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [105],  # 毒刺穿刺
+        "is_human": False,
+        "escape_rate": 0.0,
     }
     CREATURES_DB[9] = {
         "strName": "普通掠夺者",
@@ -154,6 +168,8 @@ init python:
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [1, 2, 3, 5],  # 徒手、钝器重击、砍刀、手枪
+        "is_human": True,
+        "escape_rate": 0.3,
     }
     CREATURES_DB[10] = {
         "strName": "疯狂掠夺者",
@@ -161,6 +177,8 @@ init python:
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [1, 2, 3, 108, 109],  # 徒手、钝器、砍刀、自爆、燃烧瓶
+        "is_human": True,
+        "escape_rate": 0.1,
     }
     CREATURES_DB[11] = {
         "strName": "军械残兵",
@@ -168,4 +186,6 @@ init python:
         "nTreasureID": 0,
         "nCorpseID": 0,
         "vAttackModes": [6, 199, 110],  # 步枪、压制射击、破片手雷
+        "is_human": True,
+        "escape_rate": 0.1,
     }

@@ -32,18 +32,21 @@ init -200 python:  #优先级
         'extreme_dehydrated': 90.0,
     }
 
-    # 地图移动消耗（每步）
-    TRAVEL_COSTS = {
-        'hunger_per_step': 2.0,
-        'thirst_per_step': 3.0,
-        'fatigue_per_step': 2.5,
+    # 地图移动消耗表（每步）
+    TERRAIN_TRAVEL_COSTS = {
+        "plains":     {"minutes": 15, "hunger": 1.8, "thirst": 2.0, "fatigue": 2.5},
+        "beach":      {"minutes": 20, "hunger": 2.2, "thirst": 2.5, "fatigue": 3.0},
+        "forest":     {"minutes": 25, "hunger": 2.2, "thirst": 2.5, "fatigue": 3.0},
+        "city_ruins": {"minutes": 30, "hunger": 3.5, "thirst": 4.0, "fatigue": 5.0},
+        "lake":       {"minutes": 25, "hunger": 2.8, "thirst": 3.2, "fatigue": 4.0},
+        "ocean":      None,  # 不可穿越
     }
 
-    # 每小时基础代谢（用于 tick）
-    METABOLISM_PER_HOUR = {
-        'hunger': 2.0,
-        'thirst': 3.0,
-        'fatigue': 1.5,
+    # 每五分钟基础代谢（用于 tick）
+    METABOLISM_PER_5MIN = {
+        'hunger': 0.05,
+        'thirst': 0.1,
+        'fatigue': 0.05,
     }
 
     # 疲劳阈值
