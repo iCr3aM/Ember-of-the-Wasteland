@@ -22,30 +22,23 @@ init python:
             self.config = CONDITIONS_DB[condition_id]
             self.remaining_duration = duration if duration is not None else self.config.duration
 
-    def tick_minutes(actor, minutes=5):
-        """每5分钟环境及状态心跳更新内核"""
-        # 1. 基础代谢更新（按分钟比例折算）
+    def tick_minutes(actor, minutes, thirst_multiplier=1.0):
+        """每5分钟环境及状态心跳更新内核，应用基础代谢"""
+        # 基础代谢更新（按分钟比例折算）
         apply_baseline_metabolism(
             actor,
             minutes,
             hunger_mult=actor.get_modifier_multiplier("fHungerRate"),
-            thirst_mult=actor.get_modifier_multiplier("fThirstRate"),
+            thirst_mult=actor.get_modifier_multiplier("fThirstRate") * thirst_multiplier,
             fatigue_mult=actor.get_modifier_multiplier("fFatigueRate")
         )
         
         # 更新状态
         update_thirst_condition(actor)
+        update_hunger_condition(actor)
         update_fatigue_condition(actor)
         
-        # 2. 生物指标过载扣血判定（按分钟比例）
-        if actor.hunger >= 100:
-            actor.hp -= 5 * (minutes / 60.0)
-            clamp_hp(actor)
-        if actor.thirst >= 100:
-            actor.b_dead = True
-            actor.hp = 0
-        
-        # 3. 动态状态心跳
+        # 动态状态心跳
         expired = []
         for ac in actor.active_conditions:
             if "fDamageOverTime" in ac.config.modifiers:
@@ -58,25 +51,19 @@ init python:
         for ex in expired:
             actor.active_conditions.remove(ex)
             
-        # 4. 死亡判定
+        # 死亡判定
         if actor.hp <= 0:
             actor.hp = 0
             actor.b_dead = True
 
-    def check_player_death(actor, death_label="game_over_dehydration"):
-        """检查角色是否死亡（HP <= 0 或渴死），如果死亡则跳转到指定标签。
+    def check_player_death(actor, death_label="game_over_death"):
+        """检查角色是否死亡（HP <= 0 ），如果死亡则跳转到指定标签。
         注意：这会中断当前 Ren'Py 流程，不会返回到调用处。
         """
         clamp_hp(actor)
 
-        # ===== 死亡判定：HP 归零 或 渴死 =====
+        # ===== 死亡判定：HP 归零 =====
         death_triggered = False
-
-        if actor.thirst >= 100.0:
-            actor.thirst = 100.0
-            actor.hp = 0
-            actor.b_dead = True
-            death_triggered = True
 
         if actor.hp <= 0:
             actor.hp = 0
@@ -99,7 +86,7 @@ init python:
             combat_instance.player_faint_counter += 1
             if combat_instance.player_faint_counter >= 3:
                 remove_condition_by_id(combat_instance.player, COND_FAINT)
-                # ★ 恢复时将疲劳值降到昏阙阈值以下（70-80之间）
+                # 恢复时将疲劳值降到昏阙阈值以下（70-80之间）
                 combat_instance.player.fatigue = max(0, combat_instance.player.fatigue - 60.0)  # 降低60
                 if combat_instance.player.fatigue >= FATIGUE_THRESHOLDS['faint']:
                     combat_instance.player.fatigue = FATIGUE_THRESHOLDS['faint'] - 1.0
@@ -114,7 +101,7 @@ init python:
             combat_instance.enemy_faint_counter += 1
             if combat_instance.enemy_faint_counter >= 3:
                 remove_condition_by_id(combat_instance.enemy, COND_FAINT)
-                # ★ 同样降低疲劳值
+                # 降低疲劳值
                 combat_instance.enemy.fatigue = max(0, combat_instance.enemy.fatigue - 60.0)
                 if combat_instance.enemy.fatigue >= FATIGUE_THRESHOLDS['faint']:
                     combat_instance.enemy.fatigue = FATIGUE_THRESHOLDS['faint'] - 1.0
@@ -132,8 +119,8 @@ init python:
     CONDITIONS_DB[COND_THIRST] = Condition(
         COND_THIRST,
         "口渴",
-        "口渴使得你难以集中注意力，并加速体力与生命的消耗。",
-        modifiers={"fThirstRate": 0.2, "fFatigueRate": 0.1},
+        "喉咙干涩，身体开始发出缺水的信号。",
+        modifiers={"fFatigueRate": 0.2},
         b_fatal=False,
         duration=0.0,
         b_stackable=False
@@ -142,9 +129,39 @@ init python:
     CONDITIONS_DB[COND_HUNGER] = Condition(
         COND_HUNGER,
         "饥饿",
-        "饥饿状态使身体疲劳更快，生命恢复变慢。",
-        modifiers={"fHungerRate": 0.5},
+        "腹中空空，身体开始消耗储备的脂肪。",
+        modifiers={"fFatigueRate": 0.15},
         b_fatal=False,
+        duration=0.0,
+        b_stackable=False
+    )
+
+    CONDITIONS_DB[COND_SEVERE_HUNGER] = Condition(
+        COND_SEVERE_HUNGER,
+        "重度饥饿",
+        "胃酸在空荡荡的胃里翻搅，四肢开始发软。",
+        modifiers={"fFatigueRate": 0.30},
+        b_fatal=False,
+        duration=0.0,
+        b_stackable=False
+    )
+
+    CONDITIONS_DB[COND_EXTREME_HUNGER] = Condition(
+        COND_EXTREME_HUNGER,
+        "极度饥饿",
+        "你的身体开始分解自己的肌肉来获取能量。再不进食就危险了。",
+        modifiers={"fFatigueRate": 0.50, "fDamageOverTime": 1.2, "fHitChance": -0.15},
+        b_fatal=False,
+        duration=0.0,
+        b_stackable=False
+    )
+
+    CONDITIONS_DB[COND_MALNUTRITION] = Condition(
+        COND_MALNUTRITION,
+        "营养不良",
+        "长期的饥饿让你的器官开始衰竭，身体正在不可逆转地走向崩溃。",
+        modifiers={"fFatigueRate": 0.80, "fDamageOverTime": 5.0, "fHitChance": -0.35},
+        b_fatal=True,
         duration=0.0,
         b_stackable=False
     )
@@ -152,8 +169,8 @@ init python:
     CONDITIONS_DB[COND_DEHYDRATED] = Condition(
         COND_DEHYDRATED,
         "脱水",
-        "脱水使你感到虚弱、头晕，并降低整体抗性。",
-        modifiers={"fThirstRate": 0.4, "fHungerRate": 0.1, "fDamageOverTime": 1.0},
+        "脱水使你感到虚弱和头晕。",
+        modifiers={"fFatigueRate": 0.4, "fDamageOverTime": 1.0},
         b_fatal=False,
         duration=0.0,
         b_stackable=False
@@ -162,8 +179,38 @@ init python:
     CONDITIONS_DB[COND_EXTREME_DEHYDRATED] = Condition(
         COND_EXTREME_DEHYDRATED,
         "极度脱水",
-        "极度脱水正在侵蚀你的生命，若不及时补水将会死亡。",
-        modifiers={"fThirstRate": 0.7, "fHungerRate": 0.2, "fDamageOverTime": 3.0},
+        "你的身体正在干涸，意识开始模糊，再不喝水就来不及了。",
+        modifiers={"fFatigueRate": 0.6, "fDamageOverTime": 5.0, "fHitChance": -0.15},
+        b_fatal=False,
+        duration=0.0,
+        b_stackable=False
+    )
+
+    CONDITIONS_DB[COND_ORGAN_FAILURE] = Condition(
+        COND_ORGAN_FAILURE,
+        "器官衰竭",
+        "肾脏和肝脏已经停止工作，身体正在从内部崩溃。死亡只是时间问题。",
+        modifiers={"fFatigueRate": 1.0, "fDamageOverTime": 19.0, "fHitChance": -0.35},
+        b_fatal=True,
+        duration=0.0,
+        b_stackable=False
+    )
+
+    CONDITIONS_DB[COND_BARE_FOOT] = Condition(
+        COND_BARE_FOOT,
+        "赤脚",
+        "你光着脚踩在冰冷或滚烫的废墟地面上。每一脚下去，都不知道会碰到什么。",
+        modifiers={},
+        b_fatal=False,
+        duration=0.0,
+        b_stackable=False
+    )
+
+    CONDITIONS_DB[COND_CUT_FOOT] = Condition(
+        COND_CUT_FOOT,
+        "脚底割伤",
+        "碎玻璃或锈铁片划开了你的脚底。每走一步，都在地上留下淡淡的血印。",
+        modifiers={"fDamageOverTime": 1.2},  
         b_fatal=False,
         duration=0.0,
         b_stackable=False
@@ -225,7 +272,7 @@ init python:
     CONDITIONS_DB[COND_POISON] = Condition(  #ID 202
         COND_POISON,
         "中毒",
-        "虫毒或化学毒素在体内扩散，疲劳值加速积累。",
+        "不知名的毒素在体内扩散，疲劳值加速积累。",
         modifiers={"fFatigueRate": 0.3, "fDamageOverTime": 0.5},
         b_fatal=False,
         duration=0.0,
@@ -242,7 +289,7 @@ init python:
             "fDodgeBonus": -0.15,  # ← 失衡降低闪避率15%
         },
         b_fatal=False,
-        duration=0.0,
+        duration=0.25,
         b_stackable=False
     )
 
@@ -256,7 +303,7 @@ init python:
             "fHitChance": -0.10,   # ← 轻微影响命中率
         },
         b_fatal=False,
-        duration=0.0,
+        duration=0.083,
         b_stackable=False
     )
 

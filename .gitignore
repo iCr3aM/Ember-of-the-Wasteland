@@ -31,5 +31,9 @@ Thumbs.db
 # 忽略构建导出的游戏成品目录
 /build/
 
-# 忽略约束.md
+# 忽略
 /.github/
+bundle.keystore
+android.json
+android.keystore
+/.vscode/

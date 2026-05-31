@@ -90,6 +90,17 @@ init python:
         if not shop_can_afford(player_stats, price):
             renpy.notify(f"香烟不足！需要 {price} 支，当前只有 {player_stats.cigarettes:.0f} 支。")
             return
+
+        # 检查背包是否有空位
+        if len(player_inv.backpack_slots) >= player_inv.max_slots:
+            # 检查是否可堆叠到已有物品
+            if item_instance.id not in player_inv.STACKABLE_ITEMS or not any(
+                slot["item"].id == item_instance.id and slot["stack"] < 10
+                for slot in player_inv.backpack_slots
+            ):
+                renpy.notify("背包已满，无法购买！")
+                return
+            
         # 执行交易扣款与物品转移
         shop_apply_payment(player_stats, price)
         merchant_inv.remove_item(item_instance)
@@ -119,7 +130,7 @@ init python:
         renpy.notify(f"卖出 {item_instance.config.name}，获得 {price:.0f} 支香烟。")
         return
 
-        # 不同地区的商人定义
+    # 不同地区的商人定义
     MERCHANT_WASTELAND_TRADER = MerchantConfig(
         merchant_id="wasteland_trader_01",
         name="流浪商人",
@@ -127,7 +138,9 @@ init python:
         avatar_path="images/merchant_wasteland.png",
         description="一个风尘仆仆的废土商人，他的骆驼背上驮着满满的货箱。",
         region="wasteland",
-        items_pool=[101, 102, 201, 104, 105]
+        items_pool=[201, 114, 106, 107, 105, 115, 116, 119, 121, 122,
+                    123, 125, 128, 134, 138, 139, 140, 141, 143, 144,
+                    145, 146, 147, 149, 150, 151, 152, 153]
     )
 
     MERCHANT_CITY_TRADER = MerchantConfig(
@@ -137,7 +150,8 @@ init python:
         avatar_path="images/merchant_city.png",
         description="一个精明的城市商人，他的店铺里摆满了各种废土上的稀缺物资。",
         region="city",
-        items_pool=[103, 112, 113, 114, 201]
+        items_pool=[103, 112, 113, 118, 201, 114, 142, 146, 147,
+                    126, 127, 135, 133, 124, 148]
     )
 
     MERCHANT_BLACK_MARKET = MerchantConfig(
@@ -147,7 +161,8 @@ init python:
         avatar_path="images/merchant_blackmarket.png",
         description="一个躲在阴影中的神秘人物，他的货物来源不明但品质上乘。",
         region="city_underground",
-        items_pool=[101, 109, 110, 111, 103]
+        items_pool=[104, 109, 110, 111, 101, 102, 108, 117, 120,
+                    129, 130, 131, 132, 126, 127, 135, 136, 137]
     )
 
     # 商人查找表

@@ -6,17 +6,18 @@
 init python:
     def debug_add_test_items():
         """将测试物品加入玩家背包。"""
+        player_inventory.add_item_by_id(109)
         player_inventory.add_item_by_id(110)
-        player_inventory.add_item_by_id(111)
         player_inventory.add_item_by_id(112)
         player_inventory.add_item_by_id(113)
-        player_inventory.add_item_by_id(114)
+        player_inventory.add_item_by_id(118)
+        player_inventory.add_item_by_id(154)
         player_inventory.add_item_by_id(201)
+
         player_stats.cigarettes = 9999
         renpy.notify("已添加测试物品")
 
     def debug_open_shop_screen():
-        # 直接 Show scr_shop，不经过 trade_flow
         merchant_cfg = MERCHANT_WASTELAND_TRADER
         merchant_inv = get_merchant_inventory(merchant_cfg)
         renpy.show_screen("scr_shop",
@@ -90,7 +91,7 @@ label splashscreen:
     with Pause(0.5)
 
     # --- 游戏声明（稍小但依然清晰，居中） ---
-    show text "{size=[splash_text_size]}\n本游戏可能含有恐怖、惊悚元素。\n本游戏基于Ren'Py引擎制作，采用AI生成图像与音乐素材。\n本游戏为单机游戏，不收集任何个人信息。\n\n本游戏所有内容纯属虚构。\n如有雷同，纯属巧合。{/size}" at truecenter with dissolve
+    show text "{size=[splash_text_size]}\n本游戏可能含有恐怖、惊悚元素。\n游戏基于Ren'Py引擎制作，采用AI生成图像与音乐素材。\n本作为单机游戏，不收集任何个人信息。\n\n所有内容纯属虚构。\n如有雷同，纯属巧合。{/size}" at truecenter with dissolve
     $ renpy.pause(4.0, hard=True)
     hide text with dissolve
     with Pause(0.5)
@@ -149,10 +150,10 @@ screen debug_dev_menu():
                 vbox:
                     xsize 220
                     spacing 6
-                    textbutton "打开商城交易界面":
-                        xfill True
-                        text_size 16
-                        action [Hide("debug_dev_menu"), Function(debug_open_shop_screen)]
+                    #textbutton "打开商城交易界面":
+                    #    xfill True
+                    #    text_size 16
+                    #    action [Hide("debug_dev_menu"), Function(debug_open_shop_screen)]
                     textbutton "饥饿值清0":
                         xfill True
                         text_size 16

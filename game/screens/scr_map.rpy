@@ -6,7 +6,12 @@
 # # 定义：大地图视觉渲染界面，以及周边环境搜索小面板。
 # # 实现：高亮显示玩家所在格子和可移动范围，处理点击格子后的移动动画；点击搜索按钮时展示搜索风险与进度条。 
 # =============================================================================
+init python:
+    MAP_VIEW_WIDTH = 13   # 横向显示 13 格
+    MAP_VIEW_HEIGHT = 9   # 纵向显示 9 格
+    
 screen scr_map():
+    zorder 90
     modal True
 
     # 安全检查 - 使用 screen 语法中的条件显示
@@ -19,34 +24,44 @@ screen scr_map():
             text "错误：世界地图数据未加载" size 24 color "#ff6666" xalign 0.5 yalign 0.5
     else:
         hbox:
-            spacing 20
+            spacing 10
             align (0.5, 0.5)
 
             frame:
-                xsize 1400
-                ysize 800
+                xsize 1250
+                ysize 900
                 background Solid("#111111")
                 padding (15, 15)
 
                 vbox:
-                    spacing 10
+                    spacing 6
                     text "大地图" size 28 color "#ffee88" xalign 0.0
                     $ current_tile = world_map.grid.get((player_hex_x, player_hex_y)) if world_map else None
                     $ current_terrain = get_map_tile_label(current_tile.terrain_type) if current_tile else "未知"
-                    text f"你当前的位置: ({player_hex_x}, {player_hex_y}) - {current_terrain}" size 18 color "#cccccc"
-                    null height 10
+                    $ has_map = (player_inventory.slots.get("left_hand") is not None and player_inventory.slots["left_hand"].id == 154)
+                    if has_map:
+                        text f"你当前的位置: ({player_hex_x}, {player_hex_y}) - {current_terrain}" size 18 color "#88ccff"
+                    else:
+                        text f"你当前的位置: (?, ?) - {current_terrain}" size 18 color "#666666"
+                    null height 4
+
+                    # ★ 计算视图窗口：玩家居中，13×9 ★
+                    $ view_cols = MAP_VIEW_WIDTH
+                    $ view_rows = MAP_VIEW_HEIGHT
+                    $ start_x = max(0, min(map_width - view_cols, player_hex_x - view_cols // 2))
+                    $ start_y = max(0, min(map_height - view_rows, player_hex_y - view_rows // 2))
 
                     vbox:
                         spacing 4
-                        for y in range(map_height):
+                        for y in range(start_y, start_y + view_rows):
                             hbox:
                                 spacing 4
-                                for x in range(map_width):
+                                for x in range(start_x, start_x + view_cols):
                                     $ tile = world_map.grid.get((x, y))
                                     $ tile_color = get_map_tile_color(tile.terrain_type) if tile else "#111111"
                                     $ is_adjacent = abs(x - player_hex_x) + abs(y - player_hex_y) == 1
                                     button:
-                                        xsize 60
+                                        xsize 90
                                         ysize 60
                                         background Solid(tile_color)
                                         sensitive is_adjacent or (x == player_hex_x and y == player_hex_y)
@@ -64,10 +79,28 @@ screen scr_map():
                                             text get_map_tile_label(tile.terrain_type) size 14 color "#ffffff" xalign 0.5 yalign 0.5
                                             if tile and getattr(tile, "scavenged", False):
                                                 text "已搜刮" size 12 color "#ffffff" xalign 0.9 yalign 0.9
-
+                    # 冒险日志
+                    null height 10
+                    frame:
+                        xsize 600
+                        ysize 200
+                        background Solid("#0a0a0a")
+                        padding (8, 8)
+                        vbox:
+                            text "------------------------冒险日志------------------------" size 20 color "#ffaa00" xalign 0.5
+                            viewport:
+                                yinitial 0.0
+                                scrollbars "vertical"
+                                mousewheel True
+                                xfill True
+                                yfill True
+                                vbox:
+                                    spacing 2
+                                    for entry in reversed(adventure_log[-8:]):
+                                        text "[entry]" size 16 color "#aaaaaa"
             frame:
                 xsize 200
-                ysize 800
+                ysize 900
                 background Solid("#000000cc")
                 padding (20, 20)
 
@@ -90,5 +123,5 @@ screen scr_map():
                             action Return("merchant_trade")
 
                     null height 20
-                    text "点击邻近格子即可移动。" size 14 color "#cccccc"
-                    text "移动会消耗饥饿、增加口渴与疲劳。" size 14 color "#cccccc"
+                    text "点击邻近格子即可移动。" size 16 color "#cccccc"
+                    text "移动会消耗饥饿、增加口渴与疲劳。" size 16 color "#cccccc"

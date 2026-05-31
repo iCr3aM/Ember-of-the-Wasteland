@@ -5,12 +5,12 @@
 # =============================================================================
 init python:
     import random
-    # 安全获取 BIRTH_ZONE（可能在 db_data.rpy 中定义）
+    # 安全获取 BIRTH_ZONE
     try:
         _birth_zone = BIRTH_ZONE
     except NameError:
         # 默认出生区域，与 db_data.rpy 保持一致
-        _birth_zone = [(3, 3), (3, 4), (4, 3), (4, 4)]
+        _birth_zone = [(40, 20), (40, 21), (41, 20), (41, 21)]
 
     class RandomEventEngine:
         """多地形与多时间段扩展版事件引擎（未实装一律默认版）"""
@@ -18,9 +18,21 @@ init python:
         def check_trigger(tile_instance):
             global game_time
             
-            # 基础概率判定：30% 概率触发遭遇
-            if random.random() > 0.3:
-                return None 
+            # 根据地形获取基础遇敌概率
+            _chance_map = {
+                "road":       0.25,
+                "plains":     0.20,
+                "farmland":   0.30,
+                "forest":     0.25,
+                "beach":      0.20,
+                "city_ruins": 0.35,
+                "lake":       0.20,
+                "swamp":      0.30,
+                "ocean":      0.00,
+            }
+            _chance = _chance_map.get(tile_instance.terrain_type, 0.20)
+            if random.random() > _chance:
+                return None
                 
             # 获取当前小时
             current_hour = game_time.get("hour", 12)

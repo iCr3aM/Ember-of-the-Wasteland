@@ -1,5 +1,5 @@
 # game/systems/combat.rpy
-init python:
+init -180 python:
     import random
     # ===== 命中率基础配置 =====
     BASE_HIT_CHANCE = 0.85  # 基础命中率 85%
@@ -43,6 +43,7 @@ init python:
             self.player_acted_this_turn = False
             self.player_faint_counter = 0
             self.enemy_faint_counter = 0
+            self.entangle_cooldown = 0  # 缠绕冷却回合数
         
         def fade_out_music(self):
             """战斗开始时淡出背景音乐（1.5秒渐弱）。"""
@@ -68,48 +69,32 @@ init python:
             user = self.player if is_player else self.enemy
             target = self.enemy if is_player else self.player
             
-            # 1. 确定武器类型
+            # 确定武器类型
             weapon_type = self._determine_weapon_type(attack_mode)
             base_hit = WEAPON_HIT_BASE.get(weapon_type, BASE_HIT_CHANCE)
             
-            # 2. 距离修正
+            # 距离修正
             range_mod = self._get_range_modifier(self.range)
             
-            # 3. 状态修正
+            # 状态修正
             user_cond_mod = self._get_condition_hit_modifier(user)
             target_cond_mod = self._get_condition_dodge_modifier(target)
             
-            # 4. 计算最终命中率
+            # 计算最终命中率
             hit_chance = base_hit * range_mod * user_cond_mod
             dodge_chance = BASE_DODGE_CHANCE * target_cond_mod
             
-            # 5. 限制范围 5%-99%
+            # 限制范围 5%-99%
             final_hit = max(0.05, min(0.99, hit_chance - dodge_chance))
             
             return final_hit
         
         def _determine_weapon_type(self, attack_mode):
-            """根据攻击模式对象的 ID 确定其武器类型（melee/pistol/rifle/throw/natural），用于命中率计算。"""
-            if attack_mode.id in (1,):  # 徒手
-                return "melee"
-            elif attack_mode.id in (2, 3):  # 钝器/砍刀
-                return "melee"
-            elif attack_mode.id in (4,):  # 投掷
-                return "throw"
-            elif attack_mode.id in (5,):  # 手枪
-                return "pistol"
-            elif attack_mode.id in (6, 199):  # 步枪/压制射击
-                return "rifle"
-            elif attack_mode.id in (101, 102, 103, 106):  # 生物攻击
-                return "natural"
-            elif attack_mode.id in (104, 105, 107):  # 特殊远程
-                return "throw"
-            elif attack_mode.id in (108,):  # 自爆
-                return "melee"
-            elif attack_mode.id in (109, 110):  # 投掷类
-                return "throw"
-            else:
-                return "melee"
+            """根据攻击模式对象 ID 查找武器类型（melee/pistol/rifle/throw/natural）"""
+            for ids, weapon_type in WEAPON_TYPE_RULES:
+                if attack_mode.id in ids:
+                    return weapon_type
+            return "melee"  # 默认回退
         
         def _get_range_modifier(self, current_range):
             """根据当前战斗距离（米）返回命中率修正系数。使用 RANGE_HIT_MODIFIERS 表进行区间映射。"""
@@ -168,12 +153,12 @@ init python:
             user = self.player if is_player else self.enemy
             target = self.enemy if is_player else self.player
 
-            # 消耗战斗相关资源（使用 BattleMove 实例的消耗属性）
-            user.hunger = min(100.0, user.hunger + move_instance.hunger_cost)
-            user.thirst = min(100.0, user.thirst + move_instance.thirst_cost)
+            # 玩家始终消耗；敌人仅在近战距离（≤6米）消耗
+            if is_player or self.range <= 6:
+                user.hunger = min(100.0, user.hunger + move_instance.hunger_cost)
+                user.thirst = min(100.0, user.thirst + move_instance.thirst_cost)
             user.fatigue = min(100.0, user.fatigue + move_instance.fatigue_cost)
-            if user.thirst >= 100.0:
-                user.b_dead = True
+
             # 更新状态
             update_thirst_condition(user)
             update_fatigue_condition(user)
@@ -194,7 +179,7 @@ init python:
                 self.range = max(1, self.range + effects["range_change"])
                 self.combat_log.append(f"{user.name} 执行了 [{move_instance.name}]，距离变为 {self.range}米。")
                 
-                # ★ 核心修复：距离变更后立即检查脱离条件 ★
+                # 距离变更后立即检查脱离条件
                 if self.range >= 20:
                     if is_player:
                         # 玩家：只要不昏阙，就算成功逃离
@@ -236,12 +221,10 @@ init python:
             thirst_mod = user.get_modifier_multiplier('fThirstRate')
             fatigue_mod = user.get_modifier_multiplier('fFatigueRate')
 
-            user.hunger = min(100.0, user.hunger + attack_mode.hunger_cost * hunger_mod)
-            user.thirst = min(100.0, user.thirst + attack_mode.thirst_cost * thirst_mod)
+            if is_player or self.range <= 6:
+                user.hunger = min(100.0, user.hunger + attack_mode.hunger_cost * hunger_mod)
+                user.thirst = min(100.0, user.thirst + attack_mode.thirst_cost * thirst_mod)
             user.fatigue = min(100.0, user.fatigue + attack_mode.fatigue_cost * fatigue_mod)
-
-            if user.thirst >= 100.0:
-                user.b_dead = True
 
             update_thirst_condition(user)
             update_fatigue_condition(user)
@@ -276,9 +259,9 @@ init python:
                     self.player_acted_this_turn = True
                 return
             
-            # 伤害计算（随机浮动 ±20%，取整数）
+            # 伤害计算（随机浮动 -40%，取整数）
             base_damage = attack_mode.damage
-            damage_variance = random.uniform(0.80, 1.20)
+            damage_variance = random.uniform(0.60, 1.00)
             raw_dmg = int(base_damage * damage_variance)
             
             # 攻击方增益修正
@@ -303,19 +286,33 @@ init python:
             )
             
             # 附加状态
-            if attack_mode.attacker_conditions and random.random() <= 0.5:
+            if attack_mode.attacker_conditions and random.random() <= attack_mode.condition_chance:
                 cond_to_apply = attack_mode.attacker_conditions[0]
-                target.add_condition(cond_to_apply)
+                # 缠绕冷却检查
+                if cond_to_apply == COND_ENTANGLED and self.entangle_cooldown > 0:
+                    pass  # 冷却中，不触发
+                else:
+                    target.add_condition(cond_to_apply)
                 self.combat_log.append(
-                    f"{target.name} 被施加了恶性状态: {CONDITIONS_DB[cond_to_apply].name}"
+                    f"{target.name} 被施加了状态: {CONDITIONS_DB[cond_to_apply].name}"
                 )
+                # 如果是缠绕，设置冷却（回合内不能再次使用）
+                if cond_to_apply == COND_ENTANGLED:
+                    self.entangle_cooldown = 3
+
+                # 失衡日志
+                if cond_to_apply == COND_STAGGER:
+                    self.combat_log.append(f"{target.name} 被打得脚步踉跄，失去了平衡！")
             
             # 死亡检查
             if target.hp <= 0:
                 target.b_dead = True
                 self.is_finished = True
                 self.winner = user
-                self.loot_drops = LootTable.roll_loot(target.treasure_id, overall_chance=0.6)  # ★ 60%概率掉落
+                self.loot_drops = LootTable.roll_loot(
+                    target.treasure_id,
+                    overall_chance=0.6
+                )
                 self.corpse_searched = False
                 self.combat_log.append(f"{target.name} 已经倒在了废土血泊中。")
                 if self.loot_drops:
@@ -330,6 +327,14 @@ init python:
             """敌人AI回合 - 智能判定"""
 
             if self.is_finished:
+                return
+
+            # 玩家被缠绕 → 自动跳过敌人回合
+            if is_fainted(self.player):
+                pass  # 昏阙已有处理
+            elif any(ac.id == COND_ENTANGLED for ac in self.player.active_conditions):
+                self.combat_log.append("你被藤蔓紧紧缠住，无法行动！")
+                self.is_player_turn = True
                 return
             
             # 敌人昏阙检测
@@ -346,8 +351,8 @@ init python:
             
             # === AI决策树 ===
             
-            # 1. 血量极低（<20%）=> 优先逃跑
-            if self.enemy.hp < (self.enemy.max_hp * 0.2):
+            # 血量极低（<30%）=> 优先逃跑
+            if self.enemy.hp < (self.enemy.max_hp * 0.3):
                 # 只有人类生物才有逃跑想法
                 if self.enemy.is_human and random.random() < self.enemy.escape_rate:
                     
@@ -358,15 +363,14 @@ init python:
                         escape_moves = [m for m in available_moves if m.success_effects.get("range_change", 0) > 0]
                         if escape_moves:
                             self.execute_battle_move(escape_moves[0], is_player=False)
-                            # ★ 注意：execute_battle_move 内部已经做了实时检查并可能已经设置了 is_finished
-                            # ★ 如果战斗已经因距离脱离结束，直接返回
+                            # 如果战斗已经因距离脱离结束，直接返回
                             if self.is_finished:
                                 return
                             self.is_player_turn = True
                             return
                 # 如果不是人类或没有成功逃跑，则改为攻击或前进
 
-            # 2. 被缠绕/无法近身 => 使用远程攻击
+            # 被缠绕/无法近身 => 使用远程攻击
             entangled = any(ac.id == COND_ENTANGLED for ac in self.enemy.active_conditions)
             if entangled and self.range > 2:
                 ranged_attacks = [a for a in available_attacks if a.range >= 8]
@@ -375,7 +379,7 @@ init python:
                     self.is_player_turn = True
                     return
             
-            # 3. 距离太远没有合适攻击 => 突进
+            # 距离太远没有合适攻击 => 突进
             if not available_attacks:
                 advance_moves = [m for m in available_moves if m.success_effects.get("range_change", 0) < 0]
                 if advance_moves:
@@ -390,7 +394,7 @@ init python:
                     self.is_player_turn = True
                     return
             
-            # 4. 有多个攻击选项 => 选择预期伤害最高的
+            # 有多个攻击选项 => 选择预期伤害最高的
             if available_attacks:
                 def expected_damage(attack):
                     hit_chance = self.calculate_hit_chance(attack, is_player=False)
@@ -401,7 +405,7 @@ init python:
                 self.is_player_turn = True
                 return
             
-            # 5. 兜底：尝试前进
+            # 兜底：尝试前进
             any_moves = [m for m in available_moves if m.success_effects.get("range_change", 0) < 0]
             if any_moves:
                 self.execute_battle_move(any_moves[0], is_player=False)
@@ -415,6 +419,11 @@ init python:
         def end_turn(self):
             """结束己方回合 - 切换到敌人回合"""
             if not self.is_finished and self.is_player_turn:
+
+                # 减少缠绕冷却
+                if self.entangle_cooldown > 0:
+                    self.entangle_cooldown -= 1
+
                 # 先推进一回合时间（无论本回合后续战斗是否结束）
                 self._advance_one_turn()
 
@@ -438,12 +447,13 @@ init python:
             if not self.is_finished or self.winner != self.player or self.corpse_searched:
                 return
             self.corpse_searched = True
-            if not self.loot_drops:
+            if self.loot_drops:
+                item_names = "、".join(item.config.name for item in self.loot_drops)
+                for item in self.loot_drops:
+                    player_inventory.add_item(item)
+                self.combat_log.append(f"你从尸体上搜刮到了：{item_names}。")
+            else:
                 self.combat_log.append("你搜刮了尸体，却没有找到任何有用的东西。")
-                return
-            for item in self.loot_drops:
-                player_inventory.add_item(item)
-                self.combat_log.append(f"你从尸体上获得了 {item.config.name}。")
             self.loot_drops = []
 
         def _advance_one_turn(self):

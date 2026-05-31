@@ -9,18 +9,30 @@ init python:
         def __init__(self):
             # 身体固定装备槽定义
             self.slots = {
-                "head": None,
-                "torso": None,
-                "legs": None,
-                "feet": None,
-                "left_hand": None,
-                "right_hand": None
+                "hat": None,       # 帽子
+                "neck": None,      # 脖子
+                "torso": None,     # 躯干
+                "left_hand": None,  # 左手
+                "left_wrist": None, # 左手手腕
+                "right_hand": None,  # 右手
+                "right_wrist": None, # 右手手腕
+                "legs": None,      # 裤子
+                "left_foot": None, # 左脚
+                "right_foot": None,# 右脚
+                "left_ankle": None,# 左脚脚腕
+                "right_ankle": None, # 右脚脚腕
             }
 
             self.backpack_slots = []  # 每个元素: {"item": ItemInstance, "stack": int}
             self.max_slots = 20       # 5×5 = 20 格
 
-        STACKABLE_ITEMS = {103, 112, 113, 114, 201, 104, 105, 115, 116, 117}  # 消耗品/垃圾
+        STACKABLE_ITEMS = {103, 112, 113, 114, 201, 104, 105, 115, 116, 117, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153}
+
+        def is_barefoot(self):
+            """检查玩家是否赤脚（两只脚都穿上鞋才算不赤脚）"""
+            left_shod = self.slots.get("left_foot") is not None
+            right_shod = self.slots.get("right_foot") is not None
+            return not (left_shod and right_shod)  # 只要有一只脚没穿鞋就算赤脚
 
         def add_item(self, item_instance, count=1):
             """添加物品（支持堆叠）
@@ -136,6 +148,13 @@ init python:
             item = self.slots.get(slot_name)
             if item is None:
                 return False
+
+            # 如果卸下的是脚部装备，同步赤脚状态
+            if slot_name in ("left_foot", "right_foot"):
+                if self.is_barefoot():
+                    player_stats.add_condition(COND_BARE_FOOT)
+                else:
+                    player_stats.remove_condition(COND_BARE_FOOT)
             
             # 放回背包
             success = self.add_item(item)
@@ -146,6 +165,9 @@ init python:
             
             # 清空装备槽
             self.slots[slot_name] = None
+            # 如果卸下的是武器，更新攻击模式
+            if slot_name == "right_hand":
+                self.update_player_attack_modes()
             return True 
 
         def move_to_equip(self, item_instance, slot_name):
@@ -153,6 +175,13 @@ init python:
             # 如果目标槽位已有物品，先卸下到背包
             if self.slots[slot_name] is not None:
                 self.unequip_item(slot_name)  # 放回背包
+
+            # 如果装备/卸下的是脚部装备，同步赤脚状态
+            if slot_name in ("left_foot", "right_foot"):
+                if self.is_barefoot():
+                    player_stats.add_condition(COND_BARE_FOOT)
+                else:
+                    player_stats.remove_condition(COND_BARE_FOOT)
 
             # 从背包中移除物品
             for slot in list(self.backpack_slots):
@@ -164,3 +193,19 @@ init python:
             
             # 装备到槽位
             self.slots[slot_name] = item_instance
+            # 如果装备的是武器，更新攻击模式
+            if slot_name == "right_hand":
+                self.update_player_attack_modes()
+
+        def update_player_attack_modes(self):
+            """根据当前装备的武器更新玩家的攻击模式列表"""
+            # 基础攻击模式（徒手、投掷）始终保留
+            base_modes = [1, 4]
+            
+            # 检查右手装备的武器
+            weapon_item = self.slots.get("right_hand")
+            if weapon_item and weapon_item.id in WEAPON_ATTACK_MAP:
+                base_modes.extend(WEAPON_ATTACK_MAP[weapon_item.id])
+            
+            # 去重并更新
+            player_stats.attack_mode_ids = list(set(base_modes))

@@ -79,6 +79,44 @@ style frame:
 ## 游戏内屏幕
 ################################################################################
 
+# =============================================================================
+# # 延迟鼠标悬停浮窗系统
+# =============================================================================
+# 负责在鼠标悬停满 0.5 秒时，抓取鼠标坐标并显示浮窗
+screen tooltip_delay_timer(text):
+    zorder 100
+    timer 0.5 action [
+        Show("floating_tooltip", text=text, target_pos=renpy.get_mouse_pos()),
+        Hide("tooltip_delay_timer")
+    ]
+
+# 在抓取到的鼠标坐标旁边渲染描述框
+screen floating_tooltip(text, target_pos):
+    zorder 600
+    
+    # 基础坐标微调，避免浮窗直接压在鼠标指针正下方
+    $ x = target_pos[0] + 20
+    $ y = target_pos[1] + 20
+    
+    # 如果鼠标太靠右或靠下，自动向相反方向飘，防止框框飞出屏幕
+    if x > 1550:
+        $ x = target_pos[0] - 340
+    if y > 850:
+        $ y = target_pos[1] - 140
+        
+    frame:
+        xpos x
+        ypos y
+        background "#151515f5" 
+        padding (14, 12)
+        xminimum 220
+        xmaximum 320            # 限制宽度，长文本自动换行
+        
+        text text:
+            size 16
+            color "#e0e0e0"
+            line_spacing 4
+
 
 ## 对话屏幕 ########################################################################
 ##
@@ -1212,7 +1250,7 @@ screen notify(message):
     frame at notify_appear:
         text "[message!tq]"
 
-    timer 3.25 action Hide('notify')
+    timer 5.5 action Hide('notify')
 
 
 transform notify_appear:
@@ -1220,7 +1258,7 @@ transform notify_appear:
         alpha 0
         linear .25 alpha 1.0
     on hide:
-        linear .5 alpha 0.0
+        linear 1.0 alpha 0.0
 
 
 style notify_frame is empty

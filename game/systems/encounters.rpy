@@ -1,13 +1,24 @@
 # =============================================================================
 # # 定义：大地图探索时触发的“文本遭遇事件数据库”及选项响应链。
-# # 实现：解析玩家当前所拥有的技能（如“囤积狂”）或装备（如“撬棍”），动态显示或隐藏选项；处理选项后的跳转（如：走向战斗、获得宝藏、触发伤病、或跳向另一个 Encounter ID）。
+# # 实现：解析玩家当前所拥有的技能或装备（如“撬棍”），动态显示或隐藏选项；处理选项后的跳转（如：走向战斗、获得宝藏、触发伤病、或跳向另一个 Encounter ID）。
 # =============================================================================
 # 事件编号统一管理
 init -190 python:   #优先级
     EVENT_ENCOUNTER_DEFAULT = 2001
     #EVENT_ENCOUNTER_ = 2002
-    TEST_ENEMY_IDS = [1, 3, 4, 7, 9, 11] 
+    TEST_ENEMY_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 13]
 
+    TERRAIN_ENEMY_MAP = {
+        "road":       [13, 2],       # 拾荒帮众、流浪者
+        "plains":     [1, 2],        # 野狗、流浪者
+        "farmland":   [5, 13],       # 辐射鼠、拾荒帮众
+        "forest":     [6, 10],       # 幼芽寄生体、变异蜈蚣
+        "beach":      [5, 8],        # 辐射鼠、变异吸血虫
+        "city_ruins": [3, 4],        # 枯萎者、枯萎兽
+        "lake":       [1, 8],        # 野狗、变异吸血虫
+        "swamp":      [12, 4],       # 蝎尾蝇、枯萎兽
+        "ocean":      [],            # 无
+    }
 
     EVENT_CONFIG = {
         EVENT_ENCOUNTER_DEFAULT: {
@@ -93,8 +104,13 @@ label event_encounter_default:
 
     python:
         import random
-        # 从测试敌人列表中随机选择一个
-        creature_id = random.choice(TEST_ENEMY_IDS)
+        # 根据当前地形选择敌人
+        _tile = world_map.grid.get((player_hex_x, player_hex_y))
+        _terrain = _tile.terrain_type if _tile else "plains"
+        _enemy_pool = TERRAIN_ENEMY_MAP.get(_terrain, TEST_ENEMY_IDS)
+        if not _enemy_pool:
+            _enemy_pool = TEST_ENEMY_IDS  # 兜底（ocean 不会触发事件，但以防万一）
+        creature_id = random.choice(_enemy_pool)
         enemy = ActorInstance(creature_id=creature_id, is_player=False)
         combat_instance = CombatSystem(player_stats, enemy)
         # 在战斗日志中显示敌人名称
@@ -102,13 +118,13 @@ label event_encounter_default:
     
     # 根据敌人类型显示不同的遭遇文本
     if enemy.id == 1:  # 野狗
-        "一阵低沉的咆哮从灌木丛后响起，一只皮包骨的野狗正龇牙咧嘴地盯着你。"
+        "一阵低沉的咆哮在附近响起，一只皮包骨的野狗正龇牙咧嘴地盯着你。"
     elif enemy.id in [3, 4]:  # 枯萎兽系列
-        "浓密的植被中传来低沉的嘶吼声，一个扭曲的身影从阴影中缓缓显现……"
-    elif enemy.id == 7:  # 辐射蟑螂
-        "地面传来窸窸窣窣的声响，一只巨大的甲壳生物从碎石堆中钻了出来。"
-    elif enemy.id in [9, 11]:  # 人类敌人
+        "你的附近传来了低沉的嘶吼声，一个扭曲的身影从阴影中缓缓显现……"
+    elif enemy.is_human:
         "前方传来了人声——但这片废土上，陌生人往往比野兽更危险。"
+    else:
+        "地面传来窸窸窣窣的声响，一只变异生物从废墟的缝隙中钻了出来。"
     
     $ _current_combat_instance = combat_instance
     call screen scr_combat(combat_instance)
@@ -141,11 +157,11 @@ label event_encounter_default:
 # ==========================================================
 # 死亡标签
 # ==========================================================
-label game_over_dehydration:
+label game_over_death:
     $ player_stats.b_dead = False
 
-    "你因极度脱水倒下，四周的景象渐渐模糊成一片白光。"
-    "这一切都在饥渴与疲惫之中终结。"
+    "你感受到自己的意识逐渐模糊……"
+    "身体像被抽空了一样，四肢再也无法支撑你的重量……"
 
     $ renpy.full_restart()
 
@@ -162,37 +178,36 @@ label event_camp:
     # 防御性检查
     $ check_player_death(player_stats)
     
-    # 检查疲劳值是否 >= 40
-    if player_stats.fatigue < 40:
+    # 使用CAMP_CONFIG检查疲劳值
+    if player_stats.fatigue < CAMP_CONFIG['min_fatigue_to_camp']:
         "你还不算太累，现在扎营为时过早。"
         jump travel_on_wasteland_loop
     
-    # 随机确定睡眠时长：6-8 小时
+    # 随机确定睡眠时长（分钟）
     $ import random
-    $ camp_sleep_hours = random.randint(6, 8)
-    $ camp_sleeped_hours = 0
+    $ camp_sleep_minutes = random.randint(
+        CAMP_CONFIG['min_sleep_minutes'],
+        CAMP_CONFIG['max_sleep_minutes']
+    )
+    $ remaining_minutes = camp_sleep_minutes
     
     "你找了一个相对避风的角落，开始整理物资并休息。"
     "你躺了下来，很快便进入了梦乡……"
     
-    # 循环模拟每一小时
+    # 每5分钟步进一次（与tick_minutes保持相同粒度）
     label _event_camp_loop:
-        # 如果疲劳值已降为0，提前醒来
+        # 条件检查：疲劳已恢复或睡眠时长用完
         if player_stats.fatigue <= 0:
             $ player_stats.fatigue = 0.0
             "你的疲劳已经完全恢复，提前醒了过来。"
             jump _event_camp_wake_up
         
-        # 如果睡眠时长已到，自然醒来
-        if camp_sleep_hours <= 0:
+        if remaining_minutes <= 0:
             jump _event_camp_wake_up
         
-        # 睡眠 1 小时
-        $ camp_sleep_hours -= 1
-        $ camp_sleeped_hours += 1
-        
-        # 推进60分钟
-        $ game_time['minute'] += 60
+        # 步进5分钟
+        $ step = min(5, remaining_minutes)
+        $ game_time['minute'] += step
         $ _overflow = game_time['minute'] // 60
         $ game_time['hour'] += _overflow
         $ game_time['minute'] = game_time['minute'] % 60
@@ -200,34 +215,63 @@ label event_camp:
             $ game_time['hour'] = 0
             $ game_time['day'] += 1
         
-        # 调用 tick_minutes 模拟时间流逝（会增加饥饿、口渴、疲劳）
-        $ tick_minutes(player_stats, 60)
+        # 调用基础代谢（增加饥饿、口渴、疲劳）
+        $ tick_minutes(player_stats, step, thirst_multiplier=CAMP_CONFIG['thirst_rate_multiplier'])
         
-        # 睡眠恢复疲劳
-        $ player_stats.fatigue = max(0.0, player_stats.fatigue - 10.0)
-        
-        # 睡眠期间口渴值减少
-        $ player_stats.thirst = max(0.0, player_stats.thirst - 0.5 * METABOLISM_PER_5MIN['thirst'] * 12)
+        # 睡眠恢复疲劳（按5分钟粒度）
+        $ recovery_this_step = CAMP_CONFIG['fatigue_recovery_per_5min'] * (step / 5.0)
+        $ player_stats.fatigue = max(0.0, player_stats.fatigue - recovery_this_step)
+
+        # 睡眠恢复生命值（按5分钟粒度，受 fHealingRate 修正）
+        $ hp_recovery_base = CAMP_CONFIG['hp_recovery_per_5min'] * (step / 5.0)
+        $ hp_recovery_mult = player_stats.get_modifier_multiplier("fHealingRate")
+        $ player_stats.hp = min(player_stats.max_hp, player_stats.hp + hp_recovery_base * hp_recovery_mult)
         
         # 检查是否在睡眠中死亡
         $ check_player_death(player_stats)
         
-        # 继续下一小时
+        $ remaining_minutes -= step
         jump _event_camp_loop
     
     label _event_camp_wake_up:
         # 更新疲劳状态
         $ update_fatigue_condition(player_stats)
         
-        "你醒了过来，感觉精神恢复了不少。"
-        
-        $ sleep_hours = camp_sleeped_hours
-        if sleep_hours == 1:
-            "你只睡了 1 个小时。"
+        $ sleep_hours = (camp_sleep_minutes - remaining_minutes) // 60
+        $ sleep_remain = (camp_sleep_minutes - remaining_minutes) % 60
+
+        $ nap_descriptions = [
+            "你打了个盹，被一阵不知名的嚎叫声惊醒。心脏狂跳了好一阵才平复。",
+            "你靠在废墟的阴影里，意识在清醒与混沌间游荡了片刻。醒来时脖子僵硬。",
+            "浅层的睡眠只持续了一小会儿。你醒来时，甚至不确定自己是否真的睡着过。"
+        ]
+
+        $ short_sleep_descriptions = [
+            "你梦见了水，清澈的、无穷无尽的水。醒来时嘴唇却依旧是干裂的。",
+            "身体下的地面硬得硌人，每一次翻身都伴随着骨骼的抗议。倦意依然沉沉地压着你。",
+            "断断续续的睡眠让你恢复了一些体力，但脑袋里像塞了一团废布，昏沉沉的。"
+        ]
+
+        $ good_sleep_descriptions = [
+            "意识沉入黑暗，像一块石头落入深井。你一度忘记了那些游荡在废墟里的东西。",
+            "你在黑暗中沉沉睡去，又在同样的黑暗中醒来。有那么一瞬间，你分不清自己身在何方。",
+            "睡眠如同一场短暂而彻底的死亡，将你从废土的现实中暂时解放了出来。"
+        ]
+
+        $ long_sleep_descriptions = [
+            "这一觉跨越了昼夜的边界。醒来时，头顶的天空已经换了颜色。",
+            "你睡了很久，久到身体仿佛被钉在了地面上。那些积压在肌肉深处的疲惫总算被洗去了大半。",
+            "你从一个深不见底的睡眠中浮了上来。梦的碎片沉在脑后，你想抓住它们，但它们已经消散了。"
+        ]
+
+        if sleep_hours == 0:
+            "[renpy.random.choice(nap_descriptions)]"
+        elif sleep_hours < 4:
+            "[renpy.random.choice(short_sleep_descriptions)]"
+        elif sleep_hours < 8:
+            "[renpy.random.choice(good_sleep_descriptions)]"
         else:
-            "你总共睡了 [sleep_hours] 个小时。"
-        
-        "现在时间是第 [game_time['day']] 天的 [game_time['hour']]:00。"
+            "[renpy.random.choice(long_sleep_descriptions)]"
         
         if player_stats.fatigue <= 0:
             "你精神饱满，又可以继续前进了。"
@@ -242,16 +286,33 @@ label event_faint_collapse:
     "眼前的景象开始模糊，双膝不受控制地弯曲，世界在你的意识中缓慢地倾斜——"
     "你失去了知觉。"
     
-    # 睡眠恢复逻辑：一次睡满 8 小时
-    $ player_stats.fatigue = max(0.0, player_stats.fatigue - 80.0)
+    # 一次性恢复所有疲劳（昏阙后强制睡满最大时间）
+    $ player_stats.fatigue = 0.0
     $ update_fatigue_condition(player_stats)
     
-    # 睡眠期间消耗代谢（口渴、饥饿值继续增加）
-    $ tick_minutes(player_stats, minutes=480)  # 8小时 = 480分钟
+    # 睡眠期间代谢消耗（8小时=480分钟）
+    $ faint_sleep_minutes = CAMP_CONFIG['max_sleep_minutes']  # 480
     
-    # 如果睡眠后因口渴死亡
+    # 调用tick_minutes模拟8小时代谢（但按倍率减少口渴增加）
+    $ tick_minutes(player_stats, faint_sleep_minutes, thirst_multiplier=CAMP_CONFIG['thirst_rate_multiplier'])
+
+    # 昏阙期间按睡眠时长恢复生命值（与扎营使用相同速率）
+    $ faint_hp_recovery = CAMP_CONFIG['hp_recovery_per_5min'] * (faint_sleep_minutes / 5.0)
+    $ faint_hp_mult = player_stats.get_modifier_multiplier("fHealingRate")
+    $ player_stats.hp = min(player_stats.max_hp, player_stats.hp + faint_hp_recovery * faint_hp_mult)
+
+    # 同时推进时间
+    $ game_time['minute'] += faint_sleep_minutes
+    $ _overflow = game_time['minute'] // 60
+    $ game_time['hour'] += _overflow
+    $ game_time['minute'] = game_time['minute'] % 60
+    if game_time['hour'] >= 24:
+        $ game_time['hour'] = 0
+        $ game_time['day'] += 1
+    
+    # 如果睡眠后死亡
     if player_stats.b_dead:
-        jump game_over_dehydration
+        jump game_over_death
     
     "……不知过了多久，你在一阵刺骨的寒冷中醒来。"
     "阳光已经移动了位置——你睡了很久。"

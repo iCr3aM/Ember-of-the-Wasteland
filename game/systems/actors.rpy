@@ -18,7 +18,7 @@ init python:
                 self.hp = 100.0
                 self.treasure_id = 0
                 self.corpse_id = 0
-                self.attack_mode_ids = [1,2,4] # 默认攻击模式
+                self.attack_mode_ids = [1,4] # 默认攻击模式
                 self.morale = 1.0
                 self.cigarettes = 0.0
             else:
@@ -42,9 +42,8 @@ init python:
                     self.fatigue = random.uniform(0, 30)
             
             # 生物基础内呼吸三维
-            self.hunger = 0.0   # 0-100, 100为极限饿死
-            self.thirst = 0.0   # 0-100, 100为极限渴死
-            self.fatigue = 0.0  # 0-100, 100为极度疲劳
+            self.hunger = random.uniform(10, 30) if not is_player else 0.0
+            self.thirst = random.uniform(10, 30) if not is_player else 0.0
             self.b_dead = False
             self.skills = []    # 静态持有的特长/技能ID列表
             self.active_conditions = [] # 动态 ActiveCondition 挂载实例列表
@@ -80,20 +79,32 @@ init python:
         def add_condition(self, condition_id):
             """挂载状态与疾病"""
             if condition_id in CONDITIONS_DB:
-                # 检查是否可叠加
                 if not CONDITIONS_DB[condition_id].b_stackable:
                     for ac in self.active_conditions:
                         if ac.id == condition_id: return
                 self.active_conditions.append(ActiveCondition(condition_id))
+                # 玩家获得新状态时写入冒险日志（仅当该状态之前未记录过）
+                if self.is_player:
+                    if not hasattr(self, '_logged_conditions'):
+                        self._logged_conditions = set()
+                    if condition_id not in self._logged_conditions:
+                        self._logged_conditions.add(condition_id)
+                        try:
+                            adventure_log.append(f"你获得了状态：{CONDITIONS_DB[condition_id].name}")
+                        except NameError:
+                            pass
         
         def remove_condition(self, condition_id):
             """移除指定的状态"""
             self.active_conditions = [ac for ac in self.active_conditions if ac.id != condition_id]
+            # 移除时清除日志记录，以便将来重新获得时可以再次记录
+            if self.is_player and hasattr(self, '_logged_conditions'):
+                self._logged_conditions.discard(condition_id)
 
     CREATURES_DB[1] = {
         "strName": "野狗",
         "fMaxHP": 30.0,
-        "nTreasureID": 0,
+        "nTreasureID": 3002,
         "nCorpseID": 0,
         "vAttackModes": [101, 102],  # 撕咬、爪击
         "is_human": False,
@@ -102,43 +113,43 @@ init python:
     CREATURES_DB[2] = {
         "strName": "流浪者",
         "fMaxHP": 50.0,
-        "nTreasureID": 0,
+        "nTreasureID": 3004,
         "nCorpseID": 0,
         "vAttackModes": [1, 2],  # 徒手、钝器重击
         "is_human": True,
         "escape_rate": 0.6,
     }
     CREATURES_DB[3] = {
-        "strName": "普通枯萎兽",
+        "strName": "枯萎者",
         "fMaxHP": 35.0,
-        "nTreasureID": 0,
+        "nTreasureID": 3003,
         "nCorpseID": 0,
         "vAttackModes": [101],  # 撕咬
         "is_human": False,
         "escape_rate": 0.0,
     }
     CREATURES_DB[4] = {
-        "strName": "巨大枯萎兽",
-        "fMaxHP": 110.0,
-        "nTreasureID": 0,
+        "strName": "枯萎兽",
+        "fMaxHP": 90.0,
+        "nTreasureID": 3003,
         "nCorpseID": 0,
         "vAttackModes": [101, 102, 103],  # 撕咬、爪击、冲撞
         "is_human": False,
         "escape_rate": 0.0,
     }
     CREATURES_DB[5] = {
-        "strName": "肿胀兽",
-        "fMaxHP": 40.0,
-        "nTreasureID": 0,
+        "strName": "辐射鼠",
+        "fMaxHP": 8.0,
+        "nTreasureID": 3001,
         "nCorpseID": 0,
-        "vAttackModes": [101, 103, 108],  # 撕咬、冲撞、自爆
+        "vAttackModes": [108],  # 啃咬（小型）
         "is_human": False,
-        "escape_rate": 0.0,
+        "escape_rate": 0.8,
     }
     CREATURES_DB[6] = {
         "strName": "幼芽寄生体",
         "fMaxHP": 25.0,
-        "nTreasureID": 0,
+        "nTreasureID": 3003,
         "nCorpseID": 0,
         "vAttackModes": [106],  # 藤蔓抽打
         "is_human": False,
@@ -147,7 +158,7 @@ init python:
     CREATURES_DB[7] = {
         "strName": "辐射蟑螂",
         "fMaxHP": 20.0,
-        "nTreasureID": 0,
+        "nTreasureID": 3002,
         "nCorpseID": 0,
         "vAttackModes": [101, 104],  # 撕咬、酸液喷射
         "is_human": False,
@@ -156,14 +167,14 @@ init python:
     CREATURES_DB[8] = {
         "strName": "变异吸血虫",
         "fMaxHP": 25.0,
-        "nTreasureID": 0,
+        "nTreasureID": 3002,
         "nCorpseID": 0,
         "vAttackModes": [105],  # 毒刺穿刺
         "is_human": False,
         "escape_rate": 0.0,
     }
     CREATURES_DB[9] = {
-        "strName": "普通掠夺者",
+        "strName": "掠夺者",
         "fMaxHP": 80.0,
         "nTreasureID": 0,
         "nCorpseID": 0,
@@ -172,13 +183,13 @@ init python:
         "escape_rate": 0.3,
     }
     CREATURES_DB[10] = {
-        "strName": "疯狂掠夺者",
-        "fMaxHP": 50.0,
-        "nTreasureID": 0,
+        "strName": "变异蜈蚣",
+        "fMaxHP": 15.0,
+        "nTreasureID": 3002,
         "nCorpseID": 0,
-        "vAttackModes": [1, 2, 3, 108, 109],  # 徒手、钝器、砍刀、自爆、燃烧瓶
-        "is_human": True,
-        "escape_rate": 0.1,
+        "vAttackModes": [101, 105],  # 撕咬、毒刺穿刺
+        "is_human": False,
+        "escape_rate": 0.3,
     }
     CREATURES_DB[11] = {
         "strName": "军械残兵",
@@ -188,4 +199,22 @@ init python:
         "vAttackModes": [6, 199, 110],  # 步枪、压制射击、破片手雷
         "is_human": True,
         "escape_rate": 0.1,
+    }
+    CREATURES_DB[12] = {
+        "strName": "蝎尾蝇",
+        "fMaxHP": 35.0,
+        "nTreasureID": 3002,
+        "nCorpseID": 0,
+        "vAttackModes": [105, 111],  # 毒刺穿刺、甩尾
+        "is_human": False,
+        "escape_rate": 0.0,
+    }
+    CREATURES_DB[13] = {
+        "strName": "拾荒帮众",
+        "fMaxHP": 45.0,
+        "nTreasureID": 3004,
+        "nCorpseID": 0,
+        "vAttackModes": [1, 3], # 徒手、砍刀挥砍
+        "is_human": True,
+        "escape_rate": 0.5,
     }

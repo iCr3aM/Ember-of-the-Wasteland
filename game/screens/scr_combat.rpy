@@ -3,8 +3,8 @@
 # # 实现：将当前的战斗数据可视化。点击“冲锋”按钮调用 `combat.rpy`，并在日志框刷出“你向前冲锋，拉近了距离”的文本。 
 # =============================================================================
 # game/screens/scr_combat.rpy
-
 init python:
+
     def disable_player_turn_in_combat():
         """在背包操作后禁用玩家当前回合（如果正在战斗中）"""
         global _current_combat_instance
@@ -34,7 +34,7 @@ screen scr_combat(combat_instance):
         vbox:
             # 尝试加载玩家头像，如果不存在则显示文字
             if renpy.loadable("images/avatar_player.png"):
-                add "images/avatar_player.png" xsize 160 ysize 160 xalign 0.5
+                add "images/avatar_player.png" xsize 200 ysize 200 fit "contain" xalign 0.5
             else:
                 frame:
                     xsize 160 ysize 160
@@ -55,7 +55,7 @@ screen scr_combat(combat_instance):
         vbox:
             $ enemy_img = f"images/avatar_enemy_{combat_instance.enemy.id}.png"
             if renpy.loadable(enemy_img):
-                add enemy_img xsize 160 ysize 160 xalign 0.5
+                add enemy_img xsize 200 ysize 200 fit "contain" xalign 0.5
             else:
                 frame:
                     xsize 160 ysize 160
@@ -116,7 +116,6 @@ screen scr_combat(combat_instance):
                         text "打开背包" align (0.5,0.5) size 18 color "#ffffff"
                 null height 10  # 分隔                
 
-                # === 战术动作（带消耗显示） ===
                 text "战术动作选择" size 18 color "#b0bec5" xalign 0.5
                 hbox:
                     spacing 20
@@ -125,20 +124,26 @@ screen scr_combat(combat_instance):
                         combat_instance.enemy, combat_instance.range
                     )
                     for bm in current_battle_moves[:12]:
+
                         button:
-                            xsize 100 ysize 110
-                            # 已行动则按钮变灰
+                            xsize 100 ysize 40
                             background Solid("#222222" if not combat_instance.can_player_act() else "#334455")
                             sensitive combat_instance.can_player_act()
-                            action Function(combat_instance.execute_battle_move, bm, True)
+                            
+                            # 描述 bm.desc
+                            hovered Show("tooltip_delay_timer", text=bm.desc)
+                            unhovered [Hide("tooltip_delay_timer"), Hide("floating_tooltip")]
+                            
+                            action [
+                                Function(combat_instance.execute_battle_move, bm, True), 
+                                Hide("tooltip_delay_timer"), 
+                                Hide("floating_tooltip")
+                            ]
+                            
                             vbox:
                                 xalign 0.5
                                 text "[bm.name]" size 18 xalign 0.5 bold True
-                                text "饥饿: [bm.hunger_cost]" size 16 xalign 0.5 color "#ffab40"
-                                text "口渴: [bm.thirst_cost]" size 16 xalign 0.5 color "#4dd0e1"
-                                text "疲劳: [bm.fatigue_cost]" size 16 xalign 0.5 color "#ce93d8"
 
-                # 攻击模式 — 显示命中率与距离影响
                 text "攻击方式选择" size 18 color "#b0bec5" xalign 0.5
                 hbox:
                     spacing 20
@@ -150,26 +155,33 @@ screen scr_combat(combat_instance):
                         $ hit_color = "#4caf50" if hit_chance >= 0.7 else "#ffa726" if hit_chance >= 0.4 else "#f44336"
 
                         button:
-                            xsize 100 ysize 110
+                            xsize 100 ysize 40
                             background Solid("#222222" if not combat_instance.can_player_act() else "#445566")
                             sensitive combat_instance.can_player_act()
-                            action Function(combat_instance.execute_attack, am, True)
+                            
+                            # 描述 am.desc
+                            hovered Show("tooltip_delay_timer", text=am.desc)
+                            unhovered [Hide("tooltip_delay_timer"), Hide("floating_tooltip")]
+                            
+                            action [
+                                Function(combat_instance.execute_attack, am, True), 
+                                Hide("tooltip_delay_timer"), 
+                                Hide("floating_tooltip")
+                            ]
+                            
                             vbox:
                                 xalign 0.5
                                 text "[am.name]" size 18 xalign 0.5 bold True
-                                text "射程: [am.range]米" size 16 xalign 0.5 color "#ffa726"
-                                text "伤害: [am.damage]" size 16 xalign 0.5 color "#ff8a80"
-                                text "命中率: [hit_chance*100:.0f]%" size 16 xalign 0.5 color hit_color
-            
+
             # ===== 回合按钮 =====
             null height 20  # 留白
             if not combat_instance.is_finished:
                 if combat_instance.is_player_turn:
-                    # ★ 修改点1：操作背包后的提示（始终显示，不替代按钮）★
+                    # 操作背包后的提示（始终显示，不替代按钮）
                     if combat_instance.player_turn_disabled_by_inventory:
-                        text "你因为操作背包而浪费了本回合的行动机会！" size 20 color "#ffcc00" xalign 0.5
+                        text "你因操作背包而失去了本回合的行动机会" size 20 color "#ffcc00" xalign 0.5
                     
-                    # ★ 修改点2：结束回合按钮始终可点击（只要战斗未结束）★
+                    # 结束回合按钮始终可点击（只要战斗未结束）
                     button:
                         xalign 0.5
                         xsize 320 ysize 60
