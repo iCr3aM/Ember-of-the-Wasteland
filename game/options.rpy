@@ -23,17 +23,19 @@ define gui.show_name = True
 
 ## 游戏版本号。
 
-define config.version = "0.2PreView"
+define config.version = "0.3PreView"
 
 
 ## 放置在游戏内“关于”屏幕上的文本。将文本放在三个引号之间，并在段落之间留出空
 ## 行。
 
-define gui.about = _p("""由末日拾荒者受启发的废土生存 RPG，融合了资源管理、回合制战斗和动态事件系统。探索荒芜的世界，收集物资，面对危险的敌人，并揭开隐藏在废土背后的秘密。
+define gui.about = _p("""由《末日拾荒者》、《辐射》系列游戏受启发的废土生存 RPG 游戏，融合了资源管理、回合制战斗和动态事件系统。探索荒芜的世界，收集物资，面对危险的敌人，并揭开隐藏在废土背后的秘密。
 
-由 Cr3aM 制作，使用 Ren'Py 引擎开发。 - 仅供内部测试和反馈。请勿分发或公开展示此版本。
+由 Cr3aM 制作，使用 Ren'Py 引擎开发。
 
-{color=#FFD700}支持者：MacHowskl、EDDIE{/color}
+- 仅供内部测试和反馈。请勿分发或公开展示此版本。
+
+{color=#FFD700}支持者：MacHowskl、EDDIE、LeC、ganla1、Weijii{/color}
 """)
 
 
@@ -59,11 +61,13 @@ define config.has_voice = True
 # define config.sample_sound = "sample-sound.ogg"
 # define config.sample_voice = "sample-voice.ogg"
 
-
 ## 将以下语句取消注释就可以设置标题界面播放的背景音乐文件。此文件将在整个游戏中
 ## 持续播放，直至音乐停止或其他文件开始播放。
 
-# define config.main_menu_music = "main-menu-theme.ogg"
+define config.main_menu_music = "bgm_menu.mp3"
+
+## 定义自动存档
+define config.has_autosave = True
 
 
 ## 转场 ##########################################################################
@@ -118,7 +122,7 @@ define config.window_hide_transition = Dissolve(.2)
 
 ## 控制默认的文字显示速度。默认的 0 为瞬间，而其他数字则是每秒显示出的字符数。
 
-default preferences.text_cps = 0
+default preferences.text_cps = 10
 
 
 ## 默认的自动前进延迟。数字越大，等待时间越长，有效范围为 0 - 30。
@@ -176,6 +180,12 @@ init python:
     build.classify('**/#**', None)
     build.classify('**/thumbs.db', None)
 
+    build.classify('game/**.png', 'archive')
+    build.classify('game/**.jpg', 'archive')
+    build.classify('game/**.mp3', 'archive')
+    build.classify('game/**.ogg', 'archive')
+    build.classify('**.rpy', None)
+
     ## 若要封装文件，需将其列为“archive”。
 
     # build.classify('game/**.png', 'archive')
@@ -186,6 +196,11 @@ init python:
 
     build.documentation('*.html')
     build.documentation('*.txt')
+    config.game_menu_action = ShowMenu("history")
+
+    ## 注册自动存档回调
+    config.autosave_callback = auto_save_game
+
 
 
 ## 执行应用内购需要一个 Google Play 许可密钥。许可密钥可以在 Google Play 开发者

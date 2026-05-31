@@ -6,11 +6,14 @@
 init python:
     class BattleMove:
         """对应 battlemoves.xml 战术动作结构"""
-        def __init__(self, id, name, min_range, max_range, us_pre_conds=None, them_pre_conds=None, success_effects=None):
+        def __init__(self, id, name, min_range, max_range, hunger_cost=0, thirst_cost=0, fatigue_cost=0, us_pre_conds=None, them_pre_conds=None, success_effects=None):
             self.id = id
             self.name = name
             self.min_range = min_range
             self.max_range = max_range
+            self.hunger_cost = hunger_cost
+            self.thirst_cost = thirst_cost
+            self.fatigue_cost = fatigue_cost
             self.us_pre_conds = us_pre_conds or []     # 必须满足自身状态ID（正数必须有，负数不能有）
             self.them_pre_conds = them_pre_conds or [] # 必须满足对方状态ID
             self.success_effects = success_effects or {} # 改变姿态或距离的效果，例如 {"range_change": -1, "set_pose": "cover"}
@@ -35,7 +38,11 @@ init python:
             return True
 
 # ======================== 通用基础移动 (玩家与大多数NPC皆可使用) ==============================
-    BATTLE_MOVES_DB[1] = BattleMove(1, "前进", 1, 15, success_effects={"range_change": -2})  # 快速缩短距离
-    BATTLE_MOVES_DB[2] = BattleMove(2, "撤退", 1, 15, success_effects={"range_change": 2})  # 快速拉开距离
-    BATTLE_MOVES_DB[3] = BattleMove(3, "冲锋", 1, 10, success_effects={"range_change": -4})  # 大幅缩短距离
-    
+    BATTLE_MOVES_DB[1] = BattleMove(1, "前进", 1, 14, hunger_cost=2, thirst_cost=2, fatigue_cost=2, success_effects={"range_change": -2})
+    BATTLE_MOVES_DB[2] = BattleMove(2, "后退", 1, 14, hunger_cost=2, thirst_cost=2, fatigue_cost=2, success_effects={"range_change": 2})
+    BATTLE_MOVES_DB[3] = BattleMove(3, "冲锋", 1, 10, hunger_cost=4, thirst_cost=4, fatigue_cost=4, success_effects={"range_change": -4})
+    #BATTLE_MOVES_DB[4] = BattleMove(4, "寻找掩体", 4, 14, hunger_cost=3, thirst_cost=3, fatigue_cost=3, success_effects={"set_pose": "cover"})
+    #BATTLE_MOVES_DB[5] = BattleMove(5, "防御", 1, 6, hunger_cost=2, thirst_cost=2, fatigue_cost=2, success_effects={"set_pose": "defend"})
+    BATTLE_MOVES_DB[6] = BattleMove(6, "逃离战斗", 5, 20, hunger_cost=5, thirst_cost=5, fatigue_cost=5, success_effects={"range_change": 8})
+    #BATTLE_MOVES_DB[7] = BattleMove(7, "原地等待", 1, 16, hunger_cost=0, thirst_cost=0, fatigue_cost=0, success_effects={"range_change": 0})
+    BATTLE_MOVES_DB[8] = BattleMove(8, "向前走", 1, 16, hunger_cost=1, thirst_cost=1, fatigue_cost=1, success_effects={"range_change": -1})

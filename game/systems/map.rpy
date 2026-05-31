@@ -5,14 +5,12 @@
 # =============================================================================
 init python:
     class HexTile:
-        def __init__(self, terrain_type, treasure_id, special_feature=None):
-            self.terrain_type = terrain_type # "forest", "plains", "city_ruins"
-            self.treasure_id = treasure_id   # 该地块搜刮对应的掉落表 ID
-            # 标记该位置是否已被玩家搜刮过
-            # 初始值为 False（未搜刮），搜刮后变为 True
-            # 用于控制搜刮按钮的行为和地图显示
-            self.scavenged = False  # 该地块是否已被搜刮
+        def __init__(self, terrain_type, treasure_id, special_feature=None, merchant_id=None):
+            self.terrain_type = terrain_type
+            self.treasure_id = treasure_id
+            self.scavenged = False
             self.special_feature = special_feature  # "lake_water", "merchant", "city", None
+            self.merchant_id = merchant_id
 
     class WorldMap:
         """大地图网络矩阵"""
@@ -45,62 +43,38 @@ init python:
 
                     # 特殊位置标记 (需要结合新地图调整坐标)
                     special = None
-                    if (x, y) == (4, 5): # 示例：地图中间
+                    merchant_id = None
+                    if (x, y) == (10, 5):  # 地图中间偏左
                         special = "merchant"
-                    elif (x, y) == (9, 9): # 示例：右下角
-                        special = "city"
+                        merchant_id = "wasteland_trader_01"
                     elif terrain == "lake":
                         special = "lake_water"
 
-                    self.grid[(x, y)] = HexTile(terrain_type=terrain, treasure_id=tid, special_feature=special)            
+                    self.grid[(x, y)] = HexTile(terrain_type=terrain, treasure_id=tid, special_feature=special, merchant_id=merchant_id)          
 
 # 关键：这些 default 变量会被存档/读档管理
-default map_width = 10
+default map_width = 20
 default map_height = 10
 
 default world_map = WorldMap(
     1, "废土地图",
     map_width,
     map_height,
-    """3,3,3,3,3,3,3,3,0,0
-3,3,3,3,3,3,3,3,0,0
-28,28,3,3,3,3,3,3,2,2
-28,28,28,3,3,3,3,28,2,2
-3,28,28,3,3,3,28,28,1,2
-3,3,28,3,3,3,28,28,1,2
-28,3,3,28,28,28,28,3,2,2
-28,28,3,3,28,28,28,3,2,2
-3,28,28,28,28,3,3,28,4,4
-4,4,28,28,28,28,3,28,4,4"""
+    """3,3,3,3,3,3,3,3,28,28,28,28,3,3,3,28,2,2,0,0
+3,3,3,28,28,28,28,28,28,28,28,1,28,3,3,3,28,2,0,0
+28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,3,28,2,2,0
+28,28,28,28,3,3,3,3,28,28,28,28,28,28,28,28,28,2,2,0
+3,28,28,28,3,1,3,3,28,28,28,28,1,28,28,28,28,2,2,0
+3,3,28,28,3,3,3,28,28,28,28,28,28,28,28,28,28,2,2,0
+28,3,3,28,28,28,28,28,28,28,28,28,28,3,3,28,28,28,2,2
+28,28,3,3,28,28,28,28,28,28,28,28,3,3,3,28,28,4,4,4
+28,28,28,28,28,28,3,3,28,1,28,3,3,3,3,28,4,4,4,4
+28,28,28,28,28,28,3,3,28,28,28,3,3,3,28,4,4,4,4,4"""
 )
-
-
-# 将函数定义移出条件块，确保始终可用
-python early:
-    def get_map_tile_color(terrain_type):
-        colors = {
-            "plains": "#888844",
-            "forest": "#227722", 
-            "city_ruins": "#663333",
-            "lake": "#4488ff",
-            "beach": "#d4c96c",
-            "ocean": "#0044aa"
-        }
-        return colors.get(terrain_type, "#444444")
-
-    def get_map_tile_label(terrain_type):
-        labels = {
-            "plains": "平原",
-            "forest": "森林",
-            "city_ruins": "废墟",
-            "lake": "湖",
-            "beach": "沙滩",
-            "ocean": "大海"
-        }
-        return labels.get(terrain_type, "未知")
 
 init python:
     def get_current_tile():
+        """获取玩家当前所在格子的 HexTile 对象。如果 world_map 未初始化或坐标不在网格内，返回 None。"""
         if world_map is None:
             return None
         return world_map.grid.get((player_hex_x, player_hex_y))
@@ -111,9 +85,20 @@ init python:
             return False, None
 
         tile.scavenged = True
-        consume_travel_costs(player_stats, steps=0.5)
+        player_stats.hunger = min(100.0, player_stats.hunger + SCAVENGE_COSTS['hunger'])
+        player_stats.thirst = min(100.0, player_stats.thirst + SCAVENGE_COSTS['thirst'])
+        player_stats.fatigue = min(100.0, player_stats.fatigue + SCAVENGE_COSTS['fatigue'])
         update_thirst_condition(player_stats)
         update_fatigue_condition(player_stats)
+
+        # 战利品掉落
+        dropped_items = loot_random_scavenge(player_inventory=player_inventory)
+        if dropped_items:
+            item_names = "、".join(item.config.name for item in dropped_items)
+            renpy.notify(f"搜刮到了：{item_names}")
+        else:
+            renpy.notify("你翻遍了废墟，一无所获。")
+            
         event_code = trigger_random_map_event()
         return True, event_code
 
@@ -126,27 +111,46 @@ init python:
 
         # 检查目标格子是否可通行
         tile = world_map.grid.get((target_x, target_y))
-        if tile and tile.terrain_type in ("ocean", "lake"):
-            renpy.notify("那里是{0}，你无法穿越。".format(get_map_tile_label(tile.terrain_type)))
+        if tile and tile.terrain_type in ("ocean"):
+            renpy.notify("那里是一望无际的{0}，你无法穿越。".format(get_map_tile_label(tile.terrain_type)))
             return None
 
-        # 移动推动时间流逝：每走一格过去1小时
-        game_time["hour"] += 1
-        if game_time["hour"] >= 24:
-            game_time["hour"] = 0
-            game_time["day"] += 1
-            
+        # 根据地形获取移动消耗
+        terrain_cost = TERRAIN_TRAVEL_COSTS.get(tile.terrain_type)
+        if terrain_cost is None:
+            renpy.notify("该地形不可通行。")
+            return None
+
+        minutes = terrain_cost["minutes"]
+        hunger_cost = terrain_cost["hunger"]
+        thirst_cost = terrain_cost["thirst"]
+        fatigue_cost = terrain_cost["fatigue"]
+
+        # 推动时间（分钟粒度）
+        game_time["minute"] += minutes
+        while game_time["minute"] >= 60:
+            game_time["minute"] -= 60
+            game_time["hour"] += 1
+            if game_time["hour"] >= 24:
+                game_time["hour"] = 0
+                game_time["day"] += 1
+
         player_hex_x = target_x
         player_hex_y = target_y
 
         if not god_mode:
-            # 移动消耗饥饿值与口渴值，并联动更新状态
-            consume_travel_costs(player_stats)
-            # 联动状态与内呼吸代谢心跳更新
-            tick_hour(player_stats, hours=1)
+            # 直接应用地形消耗（而不是以前的 TRAVEL_COSTS）
+            player_stats.hunger = min(100.0, player_stats.hunger + hunger_cost)
+            player_stats.thirst = min(100.0, player_stats.thirst + thirst_cost)
+            player_stats.fatigue = min(100.0, player_stats.fatigue + fatigue_cost)
+            update_thirst_condition(player_stats)
+            update_fatigue_condition(player_stats)
 
-        # 移动后检查本地随机遭遇事件
+            # 按每5分钟步进应用基础代谢
+            apply_baseline_metabolism(player_stats, minutes)
+
+            update_thirst_condition(player_stats)
+            update_fatigue_condition(player_stats)
+
         last_map_event_code = trigger_random_map_event()
         return last_map_event_code
-
-

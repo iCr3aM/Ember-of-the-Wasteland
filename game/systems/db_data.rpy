@@ -1,4 +1,4 @@
-# 1. 使用 init offset 统一将当前文件的初始化阶段大幅提前
+# 使用 init offset 统一将当前文件的初始化阶段大幅提前
 # 确保所有静态字典在游戏启动的第一时间被注册，防止其他系统调用时报 Key 错误
 # =============================================================================
 # # 初始化各系统实例（如 inventory = Inventory()）
@@ -25,7 +25,7 @@ default active_quests = []
 default current_map_id = 1
 default player_hex_x = 0
 default player_hex_y = 0
-default game_time = {"month": 1, "day": 1, "hour": 10}
+default game_time = {"month": 1, "day": 1, "hour": 10, "minute": 0}
 default last_map_event_code = None
 # 调试模式开关
 default god_mode = False
@@ -35,17 +35,30 @@ default _pending_inventory_removals = []
 # 3. 纯 Python 逻辑中枢方法区
 init python:
     def get_item_icon_path(item_id):
-        # 使用颜色占位符代替实际图标资源
+        """根据物品ID返回图标路径，如果实际图像文件存在则返回路径字符串，否则返回颜色占位符。"""
+        path = f"images/icon_item_{item_id}.png"
+        if renpy.loadable(path):
+            return path
         return Solid("#777777")
 
     def get_actor_avatar_path(actor_id):
-        # 使用颜色占位符代替实际头像资源
+        """根据角色ID返回头像路径，如果实际图像文件存在则返回路径字符串，否则返回颜色占位符。"""
+        path = "images/avatar_player.png" if actor_id == 0 else f"images/avatar_enemy_{actor_id}.png"
+        if renpy.loadable(path):
+            return path
         return Solid("#555555")
 
+init python:
+    BIRTH_ZONE = [(3, 3), (3, 4), (4, 3), (4, 4)]
+
     def initialize_game_systems():
-        global player_stats, player_inventory, active_quests
+        global player_stats, player_inventory, active_quests, player_hex_x, player_hex_y
+        
+        # 只在第一次初始化时随机出生点
         if player_stats is None:
             player_stats = ActorInstance(creature_id=0, is_player=True)
+            import random
+            player_hex_x, player_hex_y = random.choice(BIRTH_ZONE)
 
         if player_inventory is None:
             player_inventory = Inventory()
