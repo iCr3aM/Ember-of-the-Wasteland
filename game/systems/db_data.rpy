@@ -7,10 +7,9 @@
 # =============================================================================
 init -100:
     
-    # 1. 初始化所有静态数据库注册表
+    # 初始化所有静态数据库注册表
     define ITEMS_DB = {}
     define CONDITIONS_DB = {}
-    define ATTACK_MODES_DB = {}
     define BATTLE_MOVES_DB = {}
     define CREATURES_DB = {}
     define TREASURE_DB = {}
@@ -18,7 +17,7 @@ init -100:
     define EVENTS_DB = {}
     define QUESTS_DB = {}
 
-# 2. 声明动态运行时全局单例实例（纳入 Ren'Py 存档系统）
+# 声明动态运行时全局单例实例（纳入 Ren'Py 存档系统）
 default player_stats = None
 default player_inventory = None
 default active_quests = []
@@ -27,12 +26,14 @@ default player_hex_x = 0
 default player_hex_y = 0
 default game_time = {"month": 1, "day": 1, "hour": 10, "minute": 0}
 default last_map_event_code = None
+default _starter_loot_claimed = False  #新手礼包全局声明
+default adventure_log = []  #冒险日志变量
 # 调试模式开关
 default god_mode = False
 default disable_encounters = False
 default _pending_inventory_removals = []
 
-# 3. 纯 Python 逻辑中枢方法区
+# 纯 Python 逻辑中枢方法区
 init python:
     def get_item_icon_path(item_id):
         """根据物品ID返回图标路径，如果实际图像文件存在则返回路径字符串，否则返回颜色占位符。"""
@@ -49,7 +50,7 @@ init python:
         return Solid("#555555")
 
 init python:
-    BIRTH_ZONE = [(3, 3), (3, 4), (4, 3), (4, 4)]
+    BIRTH_ZONE = [(40, 20), (40, 21), (41, 20), (41, 21)]
 
     def initialize_game_systems():
         global player_stats, player_inventory, active_quests, player_hex_x, player_hex_y

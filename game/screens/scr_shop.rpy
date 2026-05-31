@@ -4,7 +4,7 @@
 # =============================================================================
 screen scr_shop(player_inv, merchant_inv, shop_type="wasteland_trader", barter_rate=1.0, merchant_avatar=None, merchant_name="流浪商人"):
     modal True
-    zorder 50 
+    zorder 100
     # 全屏覆盖层，确保不透过任何底层内容
     frame:
         xsize config.screen_width
@@ -54,19 +54,27 @@ screen scr_shop(player_inv, merchant_inv, shop_type="wasteland_trader", barter_r
                                 if item.config.max_durability > 0 and item.durability < 1.0:
                                     $ durability_pct = item.durability * 100
                                     text f"耐久:{durability_pct:.0f}%" size 12 color "#4caf50" xpos 1.0 ypos 0.0 xanchor 1.0 yanchor 0.0
-                                vbox:
+                                # 只检测图标和名字区域的悬停
+                                button:
                                     align (0.5, 0.5)
-                                    $ icon = item.icon_path
-                                    if icon:
-                                        add icon size (80, 80) xalign 0.5
-                                    else:
-                                        add Solid("#555555") size (80, 80) xalign 0.5
-                                    hbox:
-                                        xalign 0.5
-                                        spacing 5
-                                        text "[item.config.name]" size 12
-                                        if stack > 1:
-                                            text "×[stack]" size 14 color "#ffcc00"
+                                    background None
+                                    action NullAction()
+                                    hovered Show("tooltip_delay_timer", text=item.config.desc)
+                                    unhovered [Hide("tooltip_delay_timer"), Hide("floating_tooltip")]
+                                    
+                                    vbox:
+                                        align (0.5, 0.5)
+                                        $ icon = item.icon_path
+                                        if icon:
+                                            add icon size (80, 80) xalign 0.5
+                                        else:
+                                            add Solid("#555555") size (80, 80) xalign 0.5
+                                        hbox:
+                                            xalign 0.5
+                                            spacing 5
+                                            text "[item.config.name]" size 12
+                                            if stack > 1:
+                                                text "×[stack]" size 14 color "#ffcc00"
 
                                 # 底部：卖出价格 + "卖出"文字按钮
                                 hbox:
@@ -113,7 +121,7 @@ screen scr_shop(player_inv, merchant_inv, shop_type="wasteland_trader", barter_r
 
                     vbox:
                         spacing 5
-                        # ★ 只显示商人名称 ★
+                        # 只显示商人名称
                         text "[merchant_name]" size 24 color "#ffb74d"
             
             text "商人的物品" size 18 color "#e57373" xalign 0.5
@@ -134,25 +142,33 @@ screen scr_shop(player_inv, merchant_inv, shop_type="wasteland_trader", barter_r
                                 xsize 130 ysize 145
                                 background Solid("#282828")
                                 fixed:
-                                    # ★ 耐久度 - 右上角 ★
+                                    # 耐久度 - 右上角
                                     if item.config.max_durability > 0 and item.durability < 1.0:
                                         $ durability_pct = item.durability * 100
                                         text f"耐久:{durability_pct:.0f}%" size 12 color "#4caf50" xpos 1.0 ypos 0.0 xanchor 1.0 yanchor 0.0
 
                                     # 居中内容
-                                    vbox:
+                                    # 只检测商品图标和名字区域的悬停
+                                    button:
                                         align (0.5, 0.5)
-                                        $ icon = item.icon_path
-                                        if icon:
-                                            add icon size (80, 80) xalign 0.5
-                                        else:
-                                            add Solid("#555555") size (80, 80) xalign 0.5
-                                        hbox:
-                                            xalign 0.5
-                                            spacing 5
-                                            text "[item.config.name]" size 12
-                                            if stack > 1:
-                                                text "×[stack]" size 14 color "#ffcc00"
+                                        background None
+                                        action NullAction()
+                                        hovered Show("tooltip_delay_timer", text=item.config.desc)
+                                        unhovered [Hide("tooltip_delay_timer"), Hide("floating_tooltip")]
+                                        
+                                        vbox:
+                                            align (0.5, 0.5)
+                                            $ icon = item.icon_path
+                                            if icon:
+                                                add icon size (80, 80) xalign 0.5
+                                            else:
+                                                add Solid("#555555") size (80, 80) xalign 0.5
+                                            hbox:
+                                                xalign 0.5
+                                                spacing 5
+                                                text "[item.config.name]" size 12
+                                                if stack > 1:
+                                                    text "×[stack]" size 14 color "#ffcc00"
 
                                     # 底部：买入价格 + "买入"文字按钮（有敏感状态）
                                     hbox:
@@ -181,6 +197,6 @@ screen scr_shop(player_inv, merchant_inv, shop_type="wasteland_trader", barter_r
     # 底部退出按钮
     textbutton "打包物资安全离开":
         xalign 0.5 ypos 0.88
-        action Return()
+        action [Hide("tooltip_delay_timer"), Hide("floating_tooltip"), Return()]
         style "button"
         text_size 20

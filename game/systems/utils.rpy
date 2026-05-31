@@ -27,8 +27,16 @@ init -199 python:
 
     def update_thirst_condition(actor):
         """根据当前口渴值自动维护口渴/脱水状态。"""
+        # 先记录当前已有的口渴状态
+        had_thirst = any(ac.id == COND_THIRST for ac in actor.active_conditions)
+        had_dehydrated = any(ac.id == COND_DEHYDRATED for ac in actor.active_conditions)
+        had_extreme = any(ac.id == COND_EXTREME_DEHYDRATED for ac in actor.active_conditions)
+        had_organ = any(ac.id == COND_ORGAN_FAILURE for ac in actor.active_conditions)
+
         thirst_state = None
-        if actor.thirst >= THIRST_THRESHOLDS['extreme_dehydrated']:
+        if actor.thirst >= THIRST_THRESHOLDS['organ_failure']:
+            thirst_state = COND_ORGAN_FAILURE
+        elif actor.thirst >= THIRST_THRESHOLDS['extreme_dehydrated']:
             thirst_state = COND_EXTREME_DEHYDRATED
         elif actor.thirst >= THIRST_THRESHOLDS['dehydrated']:
             thirst_state = COND_DEHYDRATED
@@ -41,11 +49,40 @@ init -199 python:
         if thirst_state is not None:
             actor.add_condition(thirst_state)
 
+    def update_hunger_condition(actor):
+        """根据当前饥饿值自动维护饥饿/重度饥饿/极度饥饿/营养不良状态。"""
+        # 先记录当前已有的饥饿状态
+        had_hunger = any(ac.id == COND_HUNGER for ac in actor.active_conditions)
+        had_severe = any(ac.id == COND_SEVERE_HUNGER for ac in actor.active_conditions)
+        had_extreme = any(ac.id == COND_EXTREME_HUNGER for ac in actor.active_conditions)
+        had_mal = any(ac.id == COND_MALNUTRITION for ac in actor.active_conditions)
+
+        hunger_state = None
+        if actor.hunger >= HUNGER_THRESHOLDS['malnutrition']:
+            hunger_state = COND_MALNUTRITION
+        elif actor.hunger >= HUNGER_THRESHOLDS['extreme_hunger']:
+            hunger_state = COND_EXTREME_HUNGER
+        elif actor.hunger >= HUNGER_THRESHOLDS['severe_hunger']:
+            hunger_state = COND_SEVERE_HUNGER
+        elif actor.hunger >= HUNGER_THRESHOLDS['hunger']:
+            hunger_state = COND_HUNGER
+
+        # 清除旧的饥饿相关状态
+        actor.active_conditions = [ac for ac in actor.active_conditions if ac.id not in CONDITIONAL_HUNGER_IDS]
+
+        if hunger_state is not None:
+            actor.add_condition(hunger_state)
+
     def update_fatigue_condition(actor):
         """根据当前疲劳值自动维护疲劳状态。"""
+        # 先记录当前已有的疲劳状态
+        had_fatigue = any(ac.id == COND_FATIGUE for ac in actor.active_conditions)
+        had_severe = any(ac.id == COND_SEVERE_FATIGUE for ac in actor.active_conditions)
+        had_faint = any(ac.id == COND_FAINT for ac in actor.active_conditions)
+        
         # 清除旧疲劳状态
         actor.active_conditions = [ac for ac in actor.active_conditions if ac.id not in (COND_FATIGUE, COND_SEVERE_FATIGUE, COND_FAINT)]
-    
+
         if actor.fatigue >= FATIGUE_THRESHOLDS['faint']:
             actor.add_condition(COND_FAINT)
         elif actor.fatigue >= FATIGUE_THRESHOLDS['severe_fatigue']:
@@ -129,7 +166,11 @@ init -199 python:
             "city_ruins": "#663333",
             "lake": "#4488ff",
             "beach": "#d4c96c",
-            "ocean": "#0044aa"
+            "ocean": "#0044aa",
+            "road": "#555555",     
+            "farmland": "#88aa44",  
+            "swamp": "#445533",
+            "other": "#444444",
         }
         return colors.get(terrain_type, "#444444")
 
@@ -141,17 +182,21 @@ init -199 python:
             "city_ruins": "废墟",
             "lake": "湖",
             "beach": "沙滩",
-            "ocean": "大海"
+            "ocean": "大海",
+            "road": "公路",      
+            "farmland": "农田",   
+            "swamp": "沼泽",
+            "other": "未知",
         }
         return labels.get(terrain_type, "未知")
 
     def is_in_birth_protection_zone(x, y):
         """
-        检查坐标是否在出生点保护区内（3x3网格，共9个地块）。
+        检查坐标是否在出生点保护区内。
         以 BIRTH_ZONE 中每个坐标为中心，检查 (x, y) 是否在 ±1 范围内。
         """
-        for bx, by in BIRTH_ZONE:   # ← 把 _birth_zone 改成 BIRTH_ZONE
-            if abs(x - bx) <= 1 and abs(y - by) <= 1:
+        for bx, by in BIRTH_ZONE:   # BIRTH_ZONE
+            if abs(x - bx) <= 2 and abs(y - by) <= 2:
                 return True
         return False    
 
