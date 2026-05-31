@@ -133,5 +133,16 @@
         ]
     },
     "workbench.editor.wrapTabs": true,
-    "editor.cursorBlinking": "solid"
+    "editor.cursorBlinking": "solid",
+    "oaicopilot.baseUrl": "https://api.siliconflow.cn/v1",
+    "oaicopilot.models": [
+    {
+        "id": "deepseek-ai/DeepSeek-V4-Flash",
+        "owned_by": "siliconflow",
+        "context_length": 1024000,
+        "max_tokens": 16384,
+        "temperature": 0,
+        "top_p": 1
+    }
+]
 }
