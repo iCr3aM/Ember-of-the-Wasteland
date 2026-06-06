@@ -5,9 +5,13 @@ init -199 python:
 # ==============================================================
     def clamp_hp(actor, min_hp=0.0):
         """统一处理 HP 下限保护，并返回是否触发死亡"""
+        if actor.hp <= 0.001:  # 浮点数容差
+            actor.hp = 0.0
+            actor.b_dead = True
+            return True
         if actor.hp < min_hp:
             actor.hp = min_hp
-        return actor.hp <= 0
+        return False
 
     def is_in_active_combat():
         """检查当前是否处于活跃战斗中（安全访问全局变量）"""
@@ -78,14 +82,11 @@ init -199 python:
         # 先记录当前已有的疲劳状态
         had_fatigue = any(ac.id == COND_FATIGUE for ac in actor.active_conditions)
         had_severe = any(ac.id == COND_SEVERE_FATIGUE for ac in actor.active_conditions)
-        had_faint = any(ac.id == COND_FAINT for ac in actor.active_conditions)
         
         # 清除旧疲劳状态
-        actor.active_conditions = [ac for ac in actor.active_conditions if ac.id not in (COND_FATIGUE, COND_SEVERE_FATIGUE, COND_FAINT)]
+        actor.active_conditions = [ac for ac in actor.active_conditions if ac.id not in (COND_FATIGUE, COND_SEVERE_FATIGUE)]
 
-        if actor.fatigue >= FATIGUE_THRESHOLDS['faint']:
-            actor.add_condition(COND_FAINT)
-        elif actor.fatigue >= FATIGUE_THRESHOLDS['severe_fatigue']:
+        if actor.fatigue >= FATIGUE_THRESHOLDS['severe_fatigue']:
             actor.add_condition(COND_SEVERE_FATIGUE)
         elif actor.fatigue >= FATIGUE_THRESHOLDS['fatigue']:
             actor.add_condition(COND_FATIGUE)
@@ -101,28 +102,6 @@ init -199 python:
     def is_fainted(actor):
         """判断角色是否处于昏阙状态（使用常量而非硬编码字符串）"""
         return any(ac.id == COND_FAINT for ac in actor.active_conditions)
-
-    def check_and_apply_faint(actor, combat_instance=None, is_player=False):
-        """
-        通用昏阙检测与状态应用。
-        参数：
-            actor: Actor对象
-            combat_instance: Combat对象（可选），如果有则附加战斗日志
-            is_player: 是否是玩家触发
-        返回：
-            bool — 是否触发了昏阙
-        """
-        if actor.fatigue >= FATIGUE_THRESHOLDS['faint']:
-            actor.fatigue = 100.0
-            update_fatigue_condition(actor)
-            if combat_instance:
-                combat_instance.combat_log.append(f"{actor.name} 因为太过疲劳而昏阙了！")
-                if is_player:
-                    combat_instance.player_acted_this_turn = True
-                else:
-                    combat_instance.is_player_turn = True
-            return True
-        return False
 
     def check_and_trigger_faint_travel(actor):
         """
@@ -219,3 +198,115 @@ init -199 python:
             return "晚上"
         else:  # 22 <= hour < 24
             return "深夜"
+
+    def get_light_hit_modifier(hour, is_ranged=False):
+        """根据当前小时返回光照对命中率的修正系数。
+        
+        时间段设计：
+        - 6:00~18:00（清晨/早上/中午/下午）→ 白天，视野良好，命中率 100%
+        - 18:00~20:00（黄昏）→ 光线渐暗，远程轻微下降，近战基本不受影响
+        - 20:00~22:00（夜晚）→ 夜色已深，远程大幅下降，近战也受影响
+        - 22:00~4:00（深夜/凌晨）→ 最黑暗时段，远程极低，近战明显下降
+        - 4:00~6:00（黎明）→ 天色渐亮，命中率逐渐恢复
+        """
+        if 6 <= hour < 18:
+            return 1.0                     # 白天：100%
+        elif 18 <= hour < 20:
+            return 0.85 if is_ranged else 0.95  # 黄昏：远程85%，近战95%
+        elif 20 <= hour < 22:
+            return 0.65 if is_ranged else 0.85  # 夜晚：远程65%，近战85%
+        elif 22 <= hour < 4:
+            return 0.50 if is_ranged else 0.75  # 深夜：远程50%，近战75%
+        elif 4 <= hour < 6:
+            return 0.75 if is_ranged else 0.90  # 黎明：远程75%，近战90%
+        return 1.0  # 兜底
+    
+    # 颜色函数
+    def get_condition_display_colors(condition_id):
+        """根据状态ID返回 (背景色, 文字色) 元组，用于UI显示。
+        
+        严重程度分级：
+        - 死亡：灰色
+        - 致命（b_fatal）：深红
+        - 危急（濒死、重度疲劳、极度饥饿/脱水、器官衰竭）：亮红
+        - 伤害（流血、中毒、骨折、内伤、失衡、重度饥饿、脱水）：橙色
+        - 警告（口渴、饥饿、疲劳、被缠绕）：琥珀色
+        - 增益（掩体、睡觉、专注、耐渴、精力充沛、强硬、凶猛）：绿色
+        - 减益（虚弱、孱弱、迟缓、衰竭）：紫色
+        - 默认：灰色
+        """
+        # 死亡
+        if condition_id == COND_DEAD:
+            return ("#333333", "#888888")
+        
+        # 致命状态
+        if condition_id in (COND_MORIBUND, COND_SEVERE_FATIGUE,
+                            COND_EXTREME_HUNGER, COND_EXTREME_DEHYDRATED,
+                            COND_ORGAN_FAILURE, COND_MALNUTRITION):
+            return ("#551111", "#ff4444")
+        
+        # 伤害/减益状态
+        if condition_id in (COND_BLEED, COND_POISON, COND_FRACTURE,
+                            COND_INTERNAL_INJURY, COND_STAGGER,
+                            COND_SEVERE_HUNGER, COND_DEHYDRATED,
+                            COND_PRONE, COND_CUT_FOOT):
+            return ("#553322", "#ff8844")
+        
+        # 警告状态
+        if condition_id in (COND_THIRST, COND_HUNGER, COND_FATIGUE,
+                            COND_ENTANGLED, COND_BARE_FOOT):
+            return ("#333322", "#ffcc66")
+        
+        # 增益状态
+        if condition_id in (COND_SHELTER, COND_FAINT,
+                            TRAIT_FOCUSED, TRAIT_DROUGHT_RESISTANT,
+                            TRAIT_ENERGETIC, TRAIT_TOUGH, TRAIT_FEROCIOUS):
+            return ("#224422", "#66ff66")
+        
+        # 减益词条
+        if condition_id in (TRAIT_WEAK, TRAIT_FRAIL, TRAIT_SLUGGISH, TRAIT_DECAYING,
+                            COND_NICOTINE_MILD, COND_NICOTINE_MODERATE, COND_NICOTINE_SEVERE):
+            return ("#332244", "#aa66cc")
+        
+        # 默认
+        return ("#222222", "#cccccc")
+
+    def smoke_cigarette():
+        """执行吸烟操作：消耗1支香烟（货币），更新成瘾状态"""
+        global cigarettes_smoked, last_cigarette_hour, game_time
+        
+        # 检查是否有香烟
+        if player_stats.cigarettes < 1:
+            renpy.notify("你没有香烟可以抽！")
+            return
+        
+        # 消耗1支香烟
+        player_stats.cigarettes -= 1
+        cigarettes_smoked += 1
+        last_cigarette_hour = game_time['hour']
+        
+        # 吸烟解除所有戒断状态
+        remove_condition_by_id(player_stats, COND_NICOTINE_MILD)
+        remove_condition_by_id(player_stats, COND_NICOTINE_MODERATE)
+        remove_condition_by_id(player_stats, COND_NICOTINE_SEVERE)
+
+        # 根据累计吸烟数更新成瘾状态（成瘾 ≠ 戒断，成瘾是永久标签）
+        # 成瘾状态在 tick_minutes 中根据"是否长时间未吸烟"触发戒断
+        
+        # 应用疲劳值减少
+        if cigarettes_smoked >= NICOTINE_MODERATE_THRESHOLD:
+            player_stats.fatigue = max(0, player_stats.fatigue - 10)
+        else:
+            player_stats.fatigue = max(0, player_stats.fatigue - 5)
+        
+        update_fatigue_condition(player_stats)
+        
+        # 显示吸烟文本
+        if cigarettes_smoked == 1:
+            renpy.notify("你点燃香烟，深吸一口。尼古丁冲进血液，世界短暂地变得清晰了一些。")
+        elif cigarettes_smoked <= NICOTINE_MILD_THRESHOLD:
+            renpy.notify("你点燃香烟，深吸一口。尼古丁冲进血液，世界短暂地变得清晰了一些。")
+        elif cigarettes_smoked <= NICOTINE_MODERATE_THRESHOLD:
+            renpy.notify("你用颤抖的手指划燃火柴，在火焰舔舐烟卷的瞬间，你的身体已经提前松弛下来。")
+        else:
+            renpy.notify("你点燃香烟，深吸一口。尼古丁冲进血液，颤抖的手终于稳定下来。")

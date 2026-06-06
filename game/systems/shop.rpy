@@ -21,14 +21,13 @@ init python:
     # 商人配置数据结构
     class MerchantConfig:
         def __init__(self, merchant_id, name, shop_type, avatar_path=None, 
-                    description="", region=None, items_pool=None):
+                    description="", region=None):
             self.merchant_id = merchant_id
             self.name = name
             self.shop_type = shop_type
             self.avatar_path = avatar_path
             self.description = description
             self.region = region
-            self.items_pool = items_pool or []
             # 运行时缓存，用于实现"每天刷新一次库存"
             self._inventory = None      # 当前持有的 Inventory 实例
             self._last_refresh_day = -1  # 上次刷新时的 game_time['day']，-1 表示从未刷新
@@ -56,7 +55,7 @@ init python:
             # 玩家卖出价格 = 基础价值 × 卖出倍率 × 汇率
             price = item_instance.config.value * config["sell_multiplier"] * barter_rate
             
-        return round(price, 1)  # 保留1位小数
+        return int(round(price))  # 四舍五入到整数
     
     def shop_can_afford(player_stats, amount):
         """检查玩家是否有足够的香烟。"""
@@ -73,62 +72,66 @@ init python:
         """向玩家支付香烟（卖出物品所得）。"""
         player_stats.cigarettes += amount
     
-    def shop_execute_purchase(player_inv, merchant_inv, item_instance, shop_type=SHOP_TYPE_WASTELAND_TRADER, barter_rate=1.0):
-        """
-        执行一次购买交易：玩家从商人处买入物品。
+    def shop_execute_purchase(player_inv, merchant_inv, item_instance, shop_type, barter_rate=1.0):
+        """执行购买逻辑：玩家消耗香烟，获得物品；商人失去物品。"""
+        # 计算商品购买价格
+        buy_price = get_shop_price(item_instance, shop_type, buy=True, barter_rate=barter_rate)
         
-        流程:
-            1. 计算价格
-            2. 检查玩家香烟是否足够
-            3. 扣除香烟
-            4. 从商人背包移除物品
-            5. 添加到玩家背包
-        """
-        global player_stats
-        price = get_shop_price(item_instance, shop_type, buy=True, barter_rate=barter_rate)
-        
-        if not shop_can_afford(player_stats, price):
-            renpy.notify(f"香烟不足！需要 {price} 支，当前只有 {player_stats.cigarettes:.0f} 支。")
+        # 检查玩家资产是否足够
+        if not shop_can_afford(player_stats, buy_price):
+            renpy.notify("香烟不足，无法购买！")
             return
 
-        # 检查背包是否有空位
-        if len(player_inv.backpack_slots) >= player_inv.max_slots:
-            # 检查是否可堆叠到已有物品
-            if item_instance.id not in player_inv.STACKABLE_ITEMS or not any(
-                slot["item"].id == item_instance.id and slot["stack"] < 10
-                for slot in player_inv.backpack_slots
+        # 检查玩家背包是否有空位（过滤掉 None 槽位，精准计算已被占用的格子数）
+        used_slots = len([slot for slot in player_inv.backpack_slots if slot is not None])
+        if used_slots >= player_inv.max_slots:
+            # 如果格子满了，再检查该物品是否能堆叠到已有的、没满的相同物品格子中
+            if item_instance.config.max_stack <= 1 or not any(
+                slot["item"].id == item_instance.id and slot["stack"] < item_instance.config.max_stack
+                for slot in player_inv.backpack_slots if slot is not None
             ):
-                renpy.notify("背包已满，无法购买！")
+                renpy.notify("你的背包已经满了。")
                 return
-            
-        # 执行交易扣款与物品转移
-        shop_apply_payment(player_stats, price)
-        merchant_inv.remove_item(item_instance)
-        player_inv.add_item(item_instance)
 
-        renpy.notify(f"购入 {item_instance.config.name}，花费 {price:.0f} 支香烟。")
-        return
+        # 扣除资产并转移物品
+        player_stats.cigarettes -= buy_price
+        
+        # 从商人的库存中移除该物品实例
+        merchant_inv.remove_item(item_instance)
+        # 将该物品实例移入玩家背包
+        player_inv.add_item(item_instance)
+        
+        renpy.notify(f"花费 {buy_price:.0f} 支烟购买了 {item_instance.config.name}")
+        renpy.restart_interaction()
     
-    def shop_execute_sell(player_inv, merchant_inv, item_instance, shop_type=SHOP_TYPE_WASTELAND_TRADER, barter_rate=1.0):
-        """
-        执行一次卖出交易：玩家将物品卖给商人。
+    def shop_execute_sell(player_inv, merchant_inv, item_instance, shop_type, barter_rate=1.0):
+        """执行卖出逻辑：玩家失去物品，获得香烟；商人获得物品。"""
+        # 计算商品出售价格
+        sell_price = get_shop_price(item_instance, shop_type, buy=False, barter_rate=barter_rate)
         
-        流程:
-            1. 计算价格
-            2. 从玩家背包移除物品
-            3. 添加到商人背包
-            4. 支付香烟给玩家
-        """
-        global player_stats
+        # 检查商人的背包（库存）是否已满
+        # 直接读取 merchant_inv 实例中的 max_slots，不再使用硬编码的 20
+        merchant_max_slots = merchant_inv.max_slots 
         
-        price = get_shop_price(item_instance, shop_type, buy=False, barter_rate=barter_rate)
-        # 执行物品转移与资金增加
+        # 精确计算已占用的非空槽位
+        merchant_used_slots = len([slot for slot in merchant_inv.backpack_slots if slot is not None])
+        
+        # 即使格子满了，依然要检查是否可以堆叠到现有物品中
+        if merchant_used_slots >= merchant_max_slots:
+            if item_instance.config.max_stack <= 1 or not any(
+                slot["item"].id == item_instance.id and slot["stack"] < item_instance.config.max_stack
+                for slot in merchant_inv.backpack_slots if slot is not None
+            ):
+                renpy.notify("商人的背包已经满了。")
+                return
+
+        # 扣除玩家物品并结算香烟
         player_inv.remove_item(item_instance)
         merchant_inv.add_item(item_instance)
-        shop_apply_income(player_stats, price)
-
-        renpy.notify(f"卖出 {item_instance.config.name}，获得 {price:.0f} 支香烟。")
-        return
+        player_stats.cigarettes += sell_price
+        
+        renpy.notify(f"卖出 {item_instance.config.name}，获得 {sell_price:.0f} 支烟")
+        renpy.restart_interaction()
 
     # 不同地区的商人定义
     MERCHANT_WASTELAND_TRADER = MerchantConfig(
@@ -138,9 +141,6 @@ init python:
         avatar_path="images/merchant_wasteland.png",
         description="一个风尘仆仆的废土商人，他的骆驼背上驮着满满的货箱。",
         region="wasteland",
-        items_pool=[201, 114, 106, 107, 105, 115, 116, 119, 121, 122,
-                    123, 125, 128, 134, 138, 139, 140, 141, 143, 144,
-                    145, 146, 147, 149, 150, 151, 152, 153]
     )
 
     MERCHANT_CITY_TRADER = MerchantConfig(
@@ -150,8 +150,6 @@ init python:
         avatar_path="images/merchant_city.png",
         description="一个精明的城市商人，他的店铺里摆满了各种废土上的稀缺物资。",
         region="city",
-        items_pool=[103, 112, 113, 118, 201, 114, 142, 146, 147,
-                    126, 127, 135, 133, 124, 148]
     )
 
     MERCHANT_BLACK_MARKET = MerchantConfig(
@@ -161,8 +159,6 @@ init python:
         avatar_path="images/merchant_blackmarket.png",
         description="一个躲在阴影中的神秘人物，他的货物来源不明但品质上乘。",
         region="city_underground",
-        items_pool=[104, 109, 110, 111, 101, 102, 108, 117, 120,
-                    129, 130, 131, 132, 126, 127, 135, 136, 137]
     )
 
     # 商人查找表
@@ -180,13 +176,48 @@ init python:
     }
 
     def create_merchant_inventory(merchant_config):
-        """根据商人配置创建其物品库存"""
-        inv = Inventory()
-        if merchant_config.items_pool:
-            import random
-            for item_id in merchant_config.items_pool:
-                if random.random() < 0.7:  # 70%概率携带
-                    inv.add_item_by_id(item_id)
+        """根据稀有度权重生成商人库存（最多30件，每稀有度至少2件）"""
+        inv = Inventory(max_slots=60)
+        import random
+
+        MAX_MERCHANT_ITEMS = 30
+        selected_ids = []
+
+        # 1. 每个稀有度至少选2件
+        for rarity, data in LOOT_RARITY.items():
+            pool = list(data["items"])
+            random.shuffle(pool)
+            count = min(2, len(pool))
+            for i in range(count):
+                selected_ids.append(pool[i])
+
+        # 2. 用权重填充剩余名额到30件
+        remaining = MAX_MERCHANT_ITEMS - len(selected_ids)
+        if remaining > 0:
+            weighted_pool = []
+            for rarity, data in LOOT_RARITY.items():
+                for item_id in data["items"]:
+                    weighted_pool.append((item_id, data["weight"]))
+
+            for _ in range(remaining):
+                if not weighted_pool:
+                    break
+                total_weight = sum(w for _, w in weighted_pool)
+                roll = random.random() * total_weight
+                cumulative = 0
+                chosen_id = weighted_pool[0][0]
+                for item_id, weight in weighted_pool:
+                    cumulative += weight
+                    if roll <= cumulative:
+                        chosen_id = item_id
+                        break
+                selected_ids.append(chosen_id)
+
+        # 3. 生成物品实例
+        for item_id in selected_ids:
+            item_instance = create_item_instance(item_id, random_durability=True)
+            inv.add_item(item_instance)
+
         return inv
 
     def get_merchant_inventory(merchant_config):

@@ -1,47 +1,119 @@
 # =============================================================================
-# # 战利品/资源生成系统
-# # 定义：战利品/资源生成表（`TREASURE_DB`，包含多概率档位的物品组合）。 
-# # 实现：当 NPC 死亡、玩家搜索废墟、或者遭遇战获胜时，负责“摇号/丢骰子”生成一堆具体的物品实例。
+# loot.rpy — 战利品/资源生成系统
+# 功能：定义战利品生成表（TREASURE_DB）及掉落引擎
+# 职责：管理地形/敌人战利品表、概率摇号、物品实例化（含随机耐久度）
 # =============================================================================
+# ── 战利品掉落引擎 ──
 init python:
     import random
 
     class LootTable:
-        """战利品与资源刷新池引擎"""
+        """战利品掉落引擎：根据战利品表 ID 摇号生成物品实例"""
         @staticmethod
         def roll_loot(treasure_id, overall_chance=1.0):
-            """
-            输入 TreasureID，丢骰子随机实例化一揽子物品。
-            overall_chance: 整体掉落概率（0.0-1.0），默认100%必定触发掉落。
-            """
+            """根据战利品表 ID 执行概率摇号，返回掉落物品实例列表"""
             dropped_instances = []
+            # 战利品表不存在则返回空
             if treasure_id not in TREASURE_DB:
                 return dropped_instances
-            
-            # 判定整体掉落概率
+            # 整体掉落概率判定
             if random.random() > overall_chance:
-                return dropped_instances  # 什么都没掉
-
-            # 然后按原有概率生成具体物品
+                return dropped_instances
+            # 逐条概率判定并生成物品实例
             for entry in TREASURE_DB[treasure_id]:
                 if random.random() <= entry["chance"]:
-                    new_item = ItemInstance(item_id=entry["item_id"])
+                    new_item = create_item_instance(
+                        item_id=entry["item_id"],
+                        random_durability=True
+                    )
                     dropped_instances.append(new_item)
             return dropped_instances
 
+    # ═══════════════════════════════════════════
+    # 搜刮点战利品重构系统
+    # ═══════════════════════════════════════════
 
-    # 地形专属搜刮表 ID
-    TREASURE_SCRAP = 1001        # 通用废墟（保留作为兜底）
-    TREASURE_CITY_RUINS = 2001   # 城市废墟
-    TREASURE_FOREST = 2002       # 森林
-    TREASURE_PLAINS = 2003       # 平原
-    TREASURE_FARMLAND = 2004     # 农田
-    TREASURE_SWAMP = 2005        # 沼泽
-    TREASURE_BEACH = 2006        # 沙滩
-    TREASURE_ROAD = 2007         # 公路
-    TREASURE_LAKE = 2008         # 湖泊
+    # ── 稀有度权重定义 ──
+    LOOT_RARITY = {
+        "trash":   {"weight": 100, "items": [105, 115, 116, 117, 150, 160, 205, 207, 209, 213]},
+        "common":  {"weight": 60,  "items": [113, 114, 138, 139, 140, 141, 143, 146, 149, 151, 152, 153, 161, 202, 203, 204, 206, 208, 210, 211, 212, 214, 217]},
+        "rare":    {"weight": 20,  "items": [103, 106, 107, 108, 112, 118, 120, 121, 122, 123, 125, 128, 134, 142, 144, 145, 147, 148, 154, 162, 165, 166, 168, 201, 215, 216]},
+        "precious":{"weight": 5,  "items": [101, 102, 104, 109, 110, 111, 119, 124, 126, 127, 130, 131, 132, 133, 135, 136, 137]},
+    }
 
-    # 敌人战利品表 ID
+    # ── 标签 → 物品ID映射 ──
+    TAG_ITEMS = {
+        "商业":  [138, 140, 144, 153, 161, 165, 166, 168],
+        "办公":  [118, 148, 151, 154],
+        "居住":  [106, 107, 108, 120, 121, 122, 123, 125, 134, 138, 144, 145, 201, 165, 166, 168, 206],
+        "医疗":  [103, 112, 113, 146, 147, 214, 217],
+        "荒野":  [115, 116, 139, 141, 150, 152, 160, 202, 203, 204, 205, 206, 207, 215, 216],
+        "狩猎":  [109, 110, 131, 132, 141, 162, 215],
+        "水域":  [128, 143, 146, 150, 201, 208, 209],
+        "海岸":  [128, 143, 152, 210, 211],
+        "交通":  [105, 117, 149, 151, 152],
+        "机械":  [104, 105, 110, 111, 130, 131, 132, 149, 151, 152],
+        "军事":  [101, 102, 104, 119, 124, 126, 127, 130, 135, 136, 137, 142],
+        "沼泽":  [115, 116, 139, 141, 150, 160, 212, 213, 214],
+    }
+
+    def roll_search_point_loot_new(search_point):
+        """基于标签和稀有度权重的新搜刮逻辑"""
+        if search_point.searched:
+            return []
+
+        tags = SEARCH_POINT_TAGS.get(search_point.point_id, [])
+        
+        # 收集所有匹配的物品及其权重
+        candidate_items = {}  # item_id -> weight
+
+        # 垃圾物品：始终加入，基础权重
+        for item_id in LOOT_RARITY["trash"]["items"]:
+            candidate_items[item_id] = LOOT_RARITY["trash"]["weight"]
+
+        # 普通/稀有/珍贵物品：匹配标签则加入，权重 ×3
+        for rarity in ["common", "rare", "precious"]:
+            base_weight = LOOT_RARITY[rarity]["weight"]
+            for item_id in LOOT_RARITY[rarity]["items"]:
+                # 检查该物品是否匹配任一标签
+                for tag in tags:
+                    if item_id in TAG_ITEMS.get(tag, []):
+                        candidate_items[item_id] = base_weight * 3
+                        break
+
+        # 基础搜刮成功率判定（约 60% 概率搜到东西）
+        import random
+        if random.random() > SEARCH_SUCCESS_CHANCE:
+            return []  # 什么都没找到
+
+        # 权重抽奖，抽取 1~3 件，不重复
+        draw_count = random.randint(SEARCH_DROP_MIN, SEARCH_DROP_MAX)
+        total_weight = sum(candidate_items.values())
+        if total_weight <= 0:
+            return []
+
+        dropped = []
+        available = dict(candidate_items)
+
+        for _ in range(min(draw_count, len(available))):
+            if not available:
+                break
+            total = sum(available.values())
+            roll = random.random() * total
+            cumulative = 0
+            chosen_id = None
+            for item_id, weight in available.items():
+                cumulative += weight
+                if roll <= cumulative:
+                    chosen_id = item_id
+                    break
+            if chosen_id is not None:
+                dropped.append(create_item_instance(chosen_id, random_durability=True))
+                del available[chosen_id]
+
+        return dropped
+
+    # ── 敌人战利品表 ID ──
     LOOT_SMALL_CREATURE = 3001    # 小型生物
     LOOT_NORMAL_CREATURE = 3002   # 普通生物
     LOOT_INFECTED = 3003          # 感染者
@@ -49,20 +121,130 @@ init python:
     LOOT_HUMAN_ARMED = 3005       # 人类（武装）
     LOOT_HUMAN_ELITE = 3006       # 人类（精锐）
 
-    # 地形 → 搜刮表 ID 映射
-    TERRAIN_TREASURE_MAP = {
-        "city_ruins": TREASURE_CITY_RUINS,
-        "forest":     TREASURE_FOREST,
-        "plains":     TREASURE_PLAINS,
-        "farmland":   TREASURE_FARMLAND,
-        "swamp":      TREASURE_SWAMP,
-        "beach":      TREASURE_BEACH,
-        "road":       TREASURE_ROAD,
-        "lake":       TREASURE_LAKE,
-        "other":      TREASURE_SCRAP,
+    # ── 平原搜刮点 ──
+    SEARCH_POINT_ABANDONED_CAMP = 4001
+    SEARCH_POINT_DEAD_TREE_HOLLOW = 4002
+    SEARCH_POINT_LAKE_DRINK = 4003
+    SEARCH_POINT_ABANDONED_CELLAR = 4026
+    SEARCH_POINT_OLD_SIGNAL_TOWER = 4027
+    SEARCH_POINT_DRIED_RIVERBED = 4028
+
+    # ── 森林搜刮点 ──
+    SEARCH_POINT_HUNTER_TREE_STAND = 4004   
+    SEARCH_POINT_FALLEN_TREE_ROOT = 4005    
+    SEARCH_POINT_DENSE_FOREST_CLEARING = 4006  
+    SEARCH_POINT_RANGER_POST = 4029
+    SEARCH_POINT_ABANDONED_SAWMILL = 4030
+    SEARCH_POINT_ANIMAL_DEN = 4031
+
+    # ── 废墟搜刮点 ──
+    SEARCH_POINT_ABANDONED_STORE = 4007
+    SEARCH_POINT_ABANDONED_OFFICE = 4008
+    SEARCH_POINT_ABANDONED_PHARMACY = 4009
+    SEARCH_POINT_ABANDONED_APARTMENT = 4010
+    SEARCH_POINT_UNDERGROUND_GARAGE = 4011
+    SEARCH_POINT_ABANDONED_FIRE_STATION = 4032
+    SEARCH_POINT_ABANDONED_SCHOOL = 4033
+    SEARCH_POINT_ABANDONED_LIBRARY = 4034
+    SEARCH_POINT_SEWER_ENTRANCE = 4035
+
+    # ── 湖泊搜刮点 ──
+    SEARCH_POINT_ABANDONED_FISHING_BOAT = 4012
+    SEARCH_POINT_LAKESIDE_CAMP = 4013
+    SEARCH_POINT_SHORE_DEBRIS = 4014
+    SEARCH_POINT_ABANDONED_BOATHOUSE = 4036
+    SEARCH_POINT_FISHING_PIER = 4037
+    SEARCH_POINT_LAKESIDE_REEDS = 4038
+
+    # ── 沙滩搜刮点 ──
+    SEARCH_POINT_ABANDONED_LIFEGUARD_TOWER = 4015
+    SEARCH_POINT_SHIPWRECK = 4016
+    SEARCH_POINT_TIDE_CAVE = 4039
+    SEARCH_POINT_ABANDONED_BATHING_BEACH = 4040
+    SEARCH_POINT_FISHERMAN_SHACK = 4041
+
+    # ── 公路搜刮点 ──
+    SEARCH_POINT_ABANDONED_GAS_STATION = 4017
+    SEARCH_POINT_ABANDONED_VEHICLE = 4018
+    SEARCH_POINT_ROAD_SIGN_SERVICE = 4019
+    SEARCH_POINT_ABANDONED_TOLL_BOOTH = 4042
+    SEARCH_POINT_OVERTURNED_TRUCK = 4043
+    SEARCH_POINT_BRIDGE_CAMP = 4044
+
+    # ── 农田搜刮点 ──
+    SEARCH_POINT_ABANDONED_FARMHOUSE = 4020
+    SEARCH_POINT_ABANDONED_BARN = 4021
+    SEARCH_POINT_ABANDONED_TRACTOR = 4022
+    SEARCH_POINT_ABANDONED_MILL = 4045
+    SEARCH_POINT_ABANDONED_GREENHOUSE = 4046
+    SEARCH_POINT_ABANDONED_WELL = 4047
+
+    # ── 沼泽搜刮点 ──
+    SEARCH_POINT_SWAMP_SHACK = 4023
+    SEARCH_POINT_ABANDONED_TREEHOUSE = 4024
+    SEARCH_POINT_SWAMP_SHIPWRECK = 4025
+    SEARCH_POINT_COLLAPSED_HUNTING_STAND = 4048
+    SEARCH_POINT_ABANDONED_PUMP_STATION = 4049
+
+    # ── 占位符 ──
+    SEARCH_POINT_PLACEHOLDER = 4999
+
+    # ── 新手礼包 ──
+    SEARCH_POINT_STARTER_PACK = 5000
+
+    # ── 搜刮点 → 标签映射（必须放在所有 SEARCH_POINT_* 常量之后） ──
+    SEARCH_POINT_TAGS = {
+        SEARCH_POINT_ABANDONED_CAMP:        ["荒野", "居住"],
+        SEARCH_POINT_DEAD_TREE_HOLLOW:      ["荒野"],
+        SEARCH_POINT_HUNTER_TREE_STAND:     ["荒野", "狩猎"],
+        SEARCH_POINT_FALLEN_TREE_ROOT:      ["荒野"],
+        SEARCH_POINT_DENSE_FOREST_CLEARING: ["荒野"],
+        SEARCH_POINT_ABANDONED_STORE:       ["商业"],
+        SEARCH_POINT_ABANDONED_OFFICE:      ["办公"],
+        SEARCH_POINT_ABANDONED_PHARMACY:    ["医疗"],
+        SEARCH_POINT_ABANDONED_APARTMENT:   ["居住"],
+        SEARCH_POINT_UNDERGROUND_GARAGE:    ["机械"],
+        SEARCH_POINT_ABANDONED_FISHING_BOAT:["水域", "居住"],
+        SEARCH_POINT_LAKESIDE_CAMP:         ["水域", "荒野"],
+        SEARCH_POINT_SHORE_DEBRIS:          ["水域"],
+        SEARCH_POINT_ABANDONED_LIFEGUARD_TOWER:["海岸", "居住"],
+        SEARCH_POINT_SHIPWRECK:             ["海岸", "机械"],
+        SEARCH_POINT_ABANDONED_GAS_STATION: ["交通", "商业"],
+        SEARCH_POINT_ABANDONED_VEHICLE:     ["交通", "机械"],
+        SEARCH_POINT_ROAD_SIGN_SERVICE:     ["交通", "办公"],
+        SEARCH_POINT_ABANDONED_FARMHOUSE:   ["居住", "荒野"],
+        SEARCH_POINT_ABANDONED_BARN:        ["居住", "荒野"],
+        SEARCH_POINT_ABANDONED_TRACTOR:     ["机械", "荒野"],
+        SEARCH_POINT_SWAMP_SHACK:           ["沼泽", "居住"],
+        SEARCH_POINT_ABANDONED_TREEHOUSE:   ["沼泽", "荒野"],
+        SEARCH_POINT_SWAMP_SHIPWRECK:       ["沼泽", "机械"],
+        SEARCH_POINT_ABANDONED_CELLAR:       ["居住"],
+        SEARCH_POINT_OLD_SIGNAL_TOWER:       ["办公", "机械"],
+        SEARCH_POINT_DRIED_RIVERBED:         ["荒野"],
+        SEARCH_POINT_RANGER_POST:            ["居住", "狩猎"],
+        SEARCH_POINT_ABANDONED_SAWMILL:      ["机械", "荒野"],
+        SEARCH_POINT_ANIMAL_DEN:             ["荒野", "狩猎"],
+        SEARCH_POINT_ABANDONED_FIRE_STATION: ["居住", "机械"],
+        SEARCH_POINT_ABANDONED_SCHOOL:       ["居住", "医疗"],
+        SEARCH_POINT_ABANDONED_LIBRARY:      ["办公"],
+        SEARCH_POINT_SEWER_ENTRANCE:         ["机械", "水域"],
+        SEARCH_POINT_ABANDONED_BOATHOUSE:    ["水域", "居住"],
+        SEARCH_POINT_FISHING_PIER:           ["水域"],
+        SEARCH_POINT_LAKESIDE_REEDS:         ["水域", "荒野"],
+        SEARCH_POINT_TIDE_CAVE:              ["海岸", "荒野"],
+        SEARCH_POINT_ABANDONED_BATHING_BEACH:["海岸", "商业"],
+        SEARCH_POINT_FISHERMAN_SHACK:        ["海岸", "居住"],
+        SEARCH_POINT_ABANDONED_TOLL_BOOTH:   ["交通", "办公"],
+        SEARCH_POINT_OVERTURNED_TRUCK:       ["交通", "商业"],
+        SEARCH_POINT_BRIDGE_CAMP:            ["居住", "荒野"],
+        SEARCH_POINT_ABANDONED_MILL:         ["居住", "机械"],
+        SEARCH_POINT_ABANDONED_GREENHOUSE:   ["荒野", "居住"],
+        SEARCH_POINT_ABANDONED_WELL:         ["荒野", "居住"],
+        SEARCH_POINT_COLLAPSED_HUNTING_STAND:["沼泽", "狩猎"],
+        SEARCH_POINT_ABANDONED_PUMP_STATION: ["沼泽", "机械"],
     }
 
-    # 战利品表定义
+    # ── 战利品表定义 ──
     TREASURE_DB = {
     # ── 小型生物（辐射鼠等） ──
     LOOT_SMALL_CREATURE: [
@@ -111,248 +293,44 @@ init python:
         {"item_id": 127, "chance": 0.05},  # 防弹背心
     ],
 
-    # ── 通用废墟（兜底） ──
-    TREASURE_SCRAP: [
-        {"item_id": 115, "chance": 0.30},  # 破布
-        {"item_id": 116, "chance": 0.25},  # 玻璃瓶
-        {"item_id": 105, "chance": 0.20},  # 零件
-        {"item_id": 117, "chance": 0.15},  # 废电池
-        {"item_id": 150, "chance": 0.20},  # 塑料袋
-        {"item_id": 151, "chance": 0.15},  # 胶带
-        {"item_id": 152, "chance": 0.15},  # 弹簧
-        {"item_id": 149, "chance": 0.12},  # 铜线
-        {"item_id": 153, "chance": 0.10},  # 打火机
-        {"item_id": 106, "chance": 0.15},  # 破旧白衬衫
-        {"item_id": 107, "chance": 0.12},  # 破旧工装裤
-        {"item_id": 134, "chance": 0.10},  # 牛仔裤
-        {"item_id": 108, "chance": 0.10},  # 肮脏运动鞋（左）
-        {"item_id": 120, "chance": 0.10},  # 肮脏运动鞋（右）
-        {"item_id": 121, "chance": 0.12},  # 人字拖（左）
-        {"item_id": 122, "chance": 0.12},  # 人字拖（右）
-        {"item_id": 102, "chance": 0.08},  # 破旧军靴（左）
-        {"item_id": 119, "chance": 0.08},  # 破旧军靴（右）
-        {"item_id": 123, "chance": 0.08},  # 破旧兜帽
-        {"item_id": 125, "chance": 0.10},  # 破围巾
-        {"item_id": 128, "chance": 0.08},  # 雨衣
-        {"item_id": 136, "chance": 0.08},  # 护踝（左）
-        {"item_id": 137, "chance": 0.08},  # 护踝（右）
-        {"item_id": 114, "chance": 0.12},  # 压缩饼干
-        {"item_id": 139, "chance": 0.10},  # 干蘑菇
-        {"item_id": 140, "chance": 0.08},  # 能量棒
-        {"item_id": 141, "chance": 0.06},  # 生肉
-        {"item_id": 138, "chance": 0.05},  # 肉罐头
-        {"item_id": 142, "chance": 0.03},  # 军用口粮
-        {"item_id": 201, "chance": 0.08},  # 纯净水
-        {"item_id": 143, "chance": 0.10},  # 雨水收集瓶
-        {"item_id": 144, "chance": 0.05},  # 瓶装可乐
-        {"item_id": 145, "chance": 0.04},  # 酒精饮料
-        {"item_id": 113, "chance": 0.08},  # 绷带
-        {"item_id": 112, "chance": 0.05},  # 抗生素
-        {"item_id": 103, "chance": 0.05},  # 急救包
-        {"item_id": 146, "chance": 0.06},  # 净水药片
-        {"item_id": 147, "chance": 0.04},  # 止痛药
-        {"item_id": 109, "chance": 0.06},  # 水果刀
-        {"item_id": 110, "chance": 0.04},  # 工具锤
-        {"item_id": 111, "chance": 0.03},  # 撬棍
-        {"item_id": 129, "chance": 0.04},  # 钢管
-        {"item_id": 130, "chance": 0.03},  # 砍刀
-        {"item_id": 131, "chance": 0.04},  # 指虎
-        {"item_id": 132, "chance": 0.03},  # 棒球棍
-        {"item_id": 101, "chance": 0.06},  # 破旧头盔
-        {"item_id": 104, "chance": 0.02},  # 破旧手枪
-        {"item_id": 118, "chance": 0.03},  # 破旧电子表
-        {"item_id": 124, "chance": 0.04},  # 狗牌项链
-        {"item_id": 126, "chance": 0.03},  # 皮夹克
-        {"item_id": 127, "chance": 0.01},  # 防弹背心
-        {"item_id": 133, "chance": 0.04},  # 幸运手链
-        {"item_id": 135, "chance": 0.03},  # 战术裤
-        {"item_id": 148, "chance": 0.03},  # 情报纸条
-    ],
-
-    # ── 城市废墟 ──
-    TREASURE_CITY_RUINS: [
-        {"item_id": 115, "chance": 0.35},  # 破布
-        {"item_id": 116, "chance": 0.30},  # 玻璃瓶
-        {"item_id": 105, "chance": 0.25},  # 零件
-        {"item_id": 117, "chance": 0.20},  # 废电池
-        {"item_id": 150, "chance": 0.25},  # 塑料袋
-        {"item_id": 151, "chance": 0.20},  # 胶带
-        {"item_id": 152, "chance": 0.18},  # 弹簧
-        {"item_id": 149, "chance": 0.15},  # 铜线
-        {"item_id": 153, "chance": 0.12},  # 打火机
-        {"item_id": 148, "chance": 0.08},  # 情报纸条
-        {"item_id": 106, "chance": 0.18},  # 破旧白衬衫
-        {"item_id": 107, "chance": 0.15},  # 破旧工装裤
-        {"item_id": 134, "chance": 0.12},  # 牛仔裤
-        {"item_id": 108, "chance": 0.12},  # 肮脏运动鞋（左）
-        {"item_id": 120, "chance": 0.12},  # 肮脏运动鞋（右）
-        {"item_id": 123, "chance": 0.10},  # 破旧兜帽
-        {"item_id": 125, "chance": 0.12},  # 破围巾
-        {"item_id": 128, "chance": 0.10},  # 雨衣
-        {"item_id": 126, "chance": 0.05},  # 皮夹克
-        {"item_id": 127, "chance": 0.02},  # 防弹背心
-        {"item_id": 135, "chance": 0.04},  # 战术裤
-        {"item_id": 101, "chance": 0.08},  # 破旧头盔
-        {"item_id": 102, "chance": 0.10},  # 破旧军靴（左）
-        {"item_id": 119, "chance": 0.10},  # 破旧军靴（右）
-        {"item_id": 136, "chance": 0.10},  # 护踝（左）
-        {"item_id": 137, "chance": 0.10},  # 护踝（右）
-        {"item_id": 109, "chance": 0.08},  # 水果刀
-        {"item_id": 110, "chance": 0.06},  # 工具锤
-        {"item_id": 111, "chance": 0.05},  # 撬棍
-        {"item_id": 129, "chance": 0.06},  # 钢管
-        {"item_id": 130, "chance": 0.04},  # 砍刀
-        {"item_id": 131, "chance": 0.05},  # 指虎
-        {"item_id": 132, "chance": 0.04},  # 棒球棍
-        {"item_id": 104, "chance": 0.03},  # 破旧手枪
-        {"item_id": 118, "chance": 0.04},  # 破旧电子表
-        {"item_id": 124, "chance": 0.05},  # 狗牌项链
-        {"item_id": 133, "chance": 0.05},  # 幸运手链
-        {"item_id": 114, "chance": 0.10},  # 压缩饼干
-        {"item_id": 138, "chance": 0.06},  # 肉罐头
-        {"item_id": 142, "chance": 0.04},  # 军用口粮
-        {"item_id": 201, "chance": 0.08},  # 纯净水
-        {"item_id": 144, "chance": 0.06},  # 瓶装可乐
-        {"item_id": 145, "chance": 0.05},  # 酒精饮料
-        {"item_id": 113, "chance": 0.10},  # 绷带
-        {"item_id": 112, "chance": 0.06},  # 抗生素
-        {"item_id": 103, "chance": 0.06},  # 急救包
-        {"item_id": 147, "chance": 0.05},  # 止痛药
-    ],
-
-    # ── 森林 ──
-    TREASURE_FOREST: [
-        {"item_id": 139, "chance": 0.30},  # 干蘑菇
-        {"item_id": 141, "chance": 0.20},  # 生肉
-        {"item_id": 115, "chance": 0.20},  # 破布
-        {"item_id": 116, "chance": 0.15},  # 玻璃瓶
-        {"item_id": 150, "chance": 0.15},  # 塑料袋
-        {"item_id": 114, "chance": 0.10},  # 压缩饼干
-        {"item_id": 140, "chance": 0.08},  # 能量棒
-        {"item_id": 201, "chance": 0.06},  # 纯净水
-        {"item_id": 143, "chance": 0.08},  # 雨水收集瓶
-        {"item_id": 105, "chance": 0.08},  # 零件
-        {"item_id": 117, "chance": 0.06},  # 废电池
-        {"item_id": 153, "chance": 0.06},  # 打火机
-        {"item_id": 109, "chance": 0.04},  # 水果刀
-        {"item_id": 110, "chance": 0.03},  # 工具锤
-        {"item_id": 113, "chance": 0.05},  # 绷带
-        {"item_id": 146, "chance": 0.04},  # 净水药片
-    ],
-
-    # ── 平原 ──
-    TREASURE_PLAINS: [
-        {"item_id": 115, "chance": 0.20},  # 破布
-        {"item_id": 116, "chance": 0.18},  # 玻璃瓶
-        {"item_id": 150, "chance": 0.18},  # 塑料袋
-        {"item_id": 105, "chance": 0.12},  # 零件
-        {"item_id": 117, "chance": 0.10},  # 废电池
-        {"item_id": 114, "chance": 0.10},  # 压缩饼干
-        {"item_id": 201, "chance": 0.08},  # 纯净水
-        {"item_id": 143, "chance": 0.10},  # 雨水收集瓶
-        {"item_id": 140, "chance": 0.06},  # 能量棒
-        {"item_id": 139, "chance": 0.08},  # 干蘑菇
-        {"item_id": 141, "chance": 0.05},  # 生肉
-        {"item_id": 109, "chance": 0.04},  # 水果刀
-        {"item_id": 110, "chance": 0.03},  # 工具锤
-        {"item_id": 153, "chance": 0.06},  # 打火机
-        {"item_id": 113, "chance": 0.04},  # 绷带
-    ],
-
-    # ── 农田 ──
-    TREASURE_FARMLAND: [
-        {"item_id": 139, "chance": 0.25},  # 干蘑菇
-        {"item_id": 141, "chance": 0.15},  # 生肉
-        {"item_id": 115, "chance": 0.20},  # 破布
-        {"item_id": 116, "chance": 0.15},  # 玻璃瓶
-        {"item_id": 150, "chance": 0.15},  # 塑料袋
-        {"item_id": 114, "chance": 0.12},  # 压缩饼干
-        {"item_id": 201, "chance": 0.08},  # 纯净水
-        {"item_id": 143, "chance": 0.10},  # 雨水收集瓶
-        {"item_id": 105, "chance": 0.10},  # 零件
-        {"item_id": 110, "chance": 0.05},  # 工具锤
-        {"item_id": 109, "chance": 0.04},  # 水果刀
-        {"item_id": 151, "chance": 0.10},  # 胶带
-        {"item_id": 152, "chance": 0.08},  # 弹簧
-        {"item_id": 153, "chance": 0.06},  # 打火机
-    ],
-
-    # ── 沼泽 ──
-    TREASURE_SWAMP: [
-        {"item_id": 139, "chance": 0.20},  # 干蘑菇
-        {"item_id": 141, "chance": 0.12},  # 生肉
-        {"item_id": 115, "chance": 0.25},  # 破布
-        {"item_id": 116, "chance": 0.20},  # 玻璃瓶
-        {"item_id": 150, "chance": 0.20},  # 塑料袋
-        {"item_id": 105, "chance": 0.08},  # 零件
-        {"item_id": 117, "chance": 0.06},  # 废电池
-        {"item_id": 114, "chance": 0.06},  # 压缩饼干
-        {"item_id": 201, "chance": 0.04},  # 纯净水
-        {"item_id": 143, "chance": 0.06},  # 雨水收集瓶
-        {"item_id": 112, "chance": 0.04},  # 抗生素
-        {"item_id": 113, "chance": 0.05},  # 绷带
-        {"item_id": 146, "chance": 0.04},  # 净水药片
-        {"item_id": 153, "chance": 0.04},  # 打火机
-    ],
-
-    # ── 沙滩 ──
-    TREASURE_BEACH: [
-        {"item_id": 116, "chance": 0.30},  # 玻璃瓶
-        {"item_id": 150, "chance": 0.25},  # 塑料袋
-        {"item_id": 115, "chance": 0.20},  # 破布
-        {"item_id": 201, "chance": 0.10},  # 纯净水
-        {"item_id": 143, "chance": 0.12},  # 雨水收集瓶
-        {"item_id": 105, "chance": 0.08},  # 零件
-        {"item_id": 117, "chance": 0.06},  # 废电池
-        {"item_id": 153, "chance": 0.08},  # 打火机
-        {"item_id": 109, "chance": 0.04},  # 水果刀
-        {"item_id": 121, "chance": 0.10},  # 人字拖（左）
-        {"item_id": 122, "chance": 0.10},  # 人字拖（右）
-        {"item_id": 106, "chance": 0.08},  # 破旧白衬衫
-        {"item_id": 134, "chance": 0.06},  # 牛仔裤
-        {"item_id": 128, "chance": 0.06},  # 雨衣
-    ],
-
-    # ── 公路 ──
-    TREASURE_ROAD: [
-        {"item_id": 105, "chance": 0.25},  # 零件
-        {"item_id": 115, "chance": 0.20},  # 破布
-        {"item_id": 116, "chance": 0.15},  # 玻璃瓶
-        {"item_id": 150, "chance": 0.15},  # 塑料袋
-        {"item_id": 117, "chance": 0.15},  # 废电池
-        {"item_id": 151, "chance": 0.18},  # 胶带
-        {"item_id": 152, "chance": 0.15},  # 弹簧
-        {"item_id": 149, "chance": 0.12},  # 铜线
-        {"item_id": 153, "chance": 0.10},  # 打火机
-        {"item_id": 114, "chance": 0.08},  # 压缩饼干
-        {"item_id": 201, "chance": 0.06},  # 纯净水
-        {"item_id": 144, "chance": 0.04},  # 瓶装可乐
-        {"item_id": 140, "chance": 0.06},  # 能量棒
-        {"item_id": 110, "chance": 0.05},  # 工具锤
-        {"item_id": 111, "chance": 0.03},  # 撬棍
-        {"item_id": 109, "chance": 0.04},  # 水果刀
-        {"item_id": 113, "chance": 0.05},  # 绷带
-        {"item_id": 146, "chance": 0.04},  # 净水药片
-    ],
-
-    # ── 湖泊（湖水事件处理，搜刮只出杂物） ──
-    TREASURE_LAKE: [
-        {"item_id": 116, "chance": 0.20},  # 玻璃瓶
-        {"item_id": 150, "chance": 0.15},  # 塑料袋
-        {"item_id": 115, "chance": 0.10},  # 破布
-        {"item_id": 143, "chance": 0.08},  # 雨水收集瓶
-        {"item_id": 201, "chance": 0.04},  # 纯净水
+    SEARCH_POINT_PLACEHOLDER: [
+        {"item_id": 115, "chance": 0.30},
+        {"item_id": 116, "chance": 0.20},
     ],
 }
 
-    def loot_random_scavenge(player_inventory=None):
-        """
-        大地图搜刮函数：从 TREASURE_SCRAP 表随机生成战利品。
-        返回掉落物品列表。
-        如果传入 inventory，自动添加进去。
-        """
-        dropped = LootTable.roll_loot(TREASURE_SCRAP, overall_chance=0.5)  # 只有50%概率搜到东西
-        if player_inventory is not None and dropped:
+    def roll_and_collect_search_point(search_point):
+        """对搜刮点执行掉落并放入地面容器，返回是否触发遭遇战"""
+        if search_point.searched:
+            return False
+        
+        dropped = roll_search_point_loot(search_point)
+        search_point.searched = True
+        
+        tile = get_current_tile()
+        if tile and dropped:
             for item in dropped:
-                player_inventory.add_item(item)
-        return dropped
+                tile.ground_container.add_item(item)
+            item_names = "、".join(item.config.name for item in dropped)
+            adventure_log.append(f"你在{search_point.name}中翻找，找到了：{item_names}")
+        else:
+            adventure_log.append(f"你翻遍了{search_point.name}，一无所获。")
+        
+        # 根据地形决定遭遇概率
+        _terrain_encounter_chances = {
+            "city_ruins": 0.40,  # 废墟：高
+            "swamp":      0.35,  # 沼泽：高
+            "forest":     0.30,  # 森林：中高
+            "road":       0.25,  # 公路：中
+            "farmland":   0.25,  # 农田：中
+            "plains":     0.20,  # 平原：中低
+            "lake":       0.20,  # 湖泊：中低
+            "beach":      0.15,  # 沙滩：低
+        }
+        tile = get_current_tile()
+        terrain = tile.terrain_type if tile else "plains"
+        encounter_chance = _terrain_encounter_chances.get(terrain, 0.20)
+        
+        if random.random() < encounter_chance:
+            return True
+        return False

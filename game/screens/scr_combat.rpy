@@ -33,14 +33,14 @@ screen scr_combat(combat_instance):
         # 左侧：玩家
         vbox:
             # 尝试加载玩家头像，如果不存在则显示文字
-            if renpy.loadable("images/avatar_player.png"):
-                add "images/avatar_player.png" xsize 200 ysize 200 fit "contain" xalign 0.5
+            if renpy.loadable("images/avatar/avatar_player.png"):
+                add "images/avatar/avatar_player.png" xsize 200 ysize 200 fit "contain" xalign 0.5
             else:
                 frame:
                     xsize 160 ysize 160
                     background Solid("#4caf50")
                     text "你" size 26 color "#ffffff" align (0.5, 0.5)
-            text f"{combat_instance.player.name} (你)" size 26 color "#4caf50" xalign 0.5
+            text f"{combat_instance.player.name}" size 26 color "#4caf50" xalign 0.5
         
         # 中间：交战距离
         vbox:
@@ -51,9 +51,9 @@ screen scr_combat(combat_instance):
                 background Solid("#203040")
                 text f"----- {combat_instance.range} 米 -----" align (0.5, 0.5) color "#ffeb3b" bold True
 
-        # 右侧：敌人
+        # 右侧：敌人（头像+名称）
         vbox:
-            $ enemy_img = f"images/avatar_enemy_{combat_instance.enemy.id}.png"
+            $ enemy_img = f"images/avatar/avatar_enemy_{combat_instance.enemy.id}.png"
             if renpy.loadable(enemy_img):
                 add enemy_img xsize 200 ysize 200 fit "contain" xalign 0.5
             else:
@@ -63,10 +63,34 @@ screen scr_combat(combat_instance):
                     text "敌" size 26 color "#ffffff" align (0.5, 0.5)
             text f"{combat_instance.enemy.name}" size 26 color "#f44336" xalign 0.5
 
+    # 敌人状态独立面板（锚定在右侧，与敌人头像对齐）
+    hbox:
+        xpos 0.70
+        ypos 0.1
+        vbox:
+            spacing 4
+            text "状态" size 16 color "#b0bec5" xalign 0.5
+            $ enemy_conditions = combat_instance.enemy.active_conditions
+            if enemy_conditions:
+                for ac in enemy_conditions:
+                    $ cond_name = ac.config.name
+                    $ cond_desc = ac.config.desc
+                    python:
+                        _bg, _color = get_condition_display_colors(ac.id)
+                        cond_bg = _bg
+                        cond_color = _color
+                    button:
+                        background Solid(cond_bg)
+                        padding (4, 3)
+                        action NullAction()
+                        hovered Show("tooltip_delay_timer", text=cond_desc)
+                        unhovered [Hide("tooltip_delay_timer"), Hide("floating_tooltip")]
+                        text cond_name size 15 color cond_color xalign 0.5
+
     # 左侧：滚动战斗日志（保持不变）
     frame:
-        xpos 0.20 ypos 0.3
-        xsize 600 ysize 500
+        xpos 0.15 ypos 0.3
+        xsize 500 ysize 500
         background Solid("#101010")
         padding (15, 15)
         
@@ -76,8 +100,16 @@ screen scr_combat(combat_instance):
             yinitial 0.0
             vbox:
                 spacing 5
-                for line in reversed(combat_instance.combat_log):
-                    text line size 16 color "#e0e0e0" substitute False
+                for entry in reversed(combat_instance.combat_log):
+                    $ line_text = entry[0]
+                    $ line_owner = entry[1]
+                    if line_owner == "player":
+                        $ line_color = "#4caf50"
+                    elif line_owner == "enemy":
+                        $ line_color = "#f44336"
+                    else:
+                        $ line_color = "#e0e0e0"
+                    text line_text size 16 color line_color substitute False
 
     # 右侧：战术动作面板
     frame:
@@ -90,98 +122,106 @@ screen scr_combat(combat_instance):
             spacing 5
             xalign 0.5
             text "决定当前回合动作" size 26 xalign 0.5 color "#80deea" bold True
-            if any(ac.id == COND_FAINT for ac in combat_instance.player.active_conditions):
-                text "你已经昏阙，无法行动！" size 18 color "#ff7043" xalign 0.5
-            
-            # 显示回合状态
-            if combat_instance.is_player_turn and not combat_instance.is_finished:
-                text "====你的回合====" size 18 xalign 0.5 color "#4caf50"
-            elif not combat_instance.is_finished:
-                text "====敌人回合====" size 18 xalign 0.5 color "#f44336"
-            
-            # 玩家回合才显示按钮
-            if combat_instance.is_player_turn and not combat_instance.is_finished:
 
-                hbox:
-                    spacing 20
-                    xalign 0.5
-                    button:
-                        xsize 200 ysize 50
-                        background Solid("#886622")
-                        hover_background Solid("#aa8844")
-                        sensitive combat_instance.can_player_act()   # 如果已因背包消耗则不可再次打开
-                        # 使用 Show 调用屏幕。因 scr_inventory 有 modal True，
-                        # 它会阻塞战斗界面，关闭后自然返回战斗，无需 Refresh 强制重绘。
-                        action Show("scr_inventory", inv_instance=player_inventory)
-                        text "打开背包" align (0.5,0.5) size 18 color "#ffffff"
-                null height 10  # 分隔                
+            # ===== 战斗进行中：显示回合状态和行动面板 =====
+            if not combat_instance.is_finished:
+                # 显示回合状态
+                if combat_instance.is_player_turn:
+                    text "====你的回合====" size 18 xalign 0.5 color "#4caf50"
+                else:
+                    text "====敌人回合====" size 18 xalign 0.5 color "#f44336"
+                
+                # 玩家回合才显示按钮
+                if combat_instance.is_player_turn:
 
-                text "战术动作选择" size 18 color "#b0bec5" xalign 0.5
-                hbox:
-                    spacing 20
-                    xalign 0
+                    hbox:
+                        spacing 20
+                        xalign 0.5
+                        button:
+                            xsize 150 ysize 50
+                            background Solid("#886622")
+                            hover_background Solid("#aa8844")
+                            sensitive combat_instance.can_player_act()
+                            action Show("scr_inventory", inv_instance=player_inventory)
+                            text "打开背包" align (0.5,0.5) size 18 color "#ffffff"
+                    null height 10
+
+                    $ in_shelter = any(ac.id == COND_SHELTER for ac in combat_instance.player.active_conditions)
+                    $ is_prone = any(ac.id == COND_PRONE for ac in combat_instance.player.active_conditions)
+                    $ shelter_move_ids = [9, 10, 11]
+                    $ prone_move_ids = [12]
+
+                    text "战术动作选择" size 18 color "#b0bec5" xalign 0.5
                     $ current_battle_moves = combat_instance.player.get_available_battle_moves(
                         combat_instance.enemy, combat_instance.range
                     )
-                    for bm in current_battle_moves[:12]:
+                    $ battle_move_rows = max(2, (len(current_battle_moves) + 3) // 4)
+                    if in_shelter:
+                        $ current_battle_moves = [bm for bm in current_battle_moves if bm.id in shelter_move_ids]
+                    if is_prone:
+                        $ current_battle_moves = [bm for bm in current_battle_moves if bm.id in prone_move_ids]
 
-                        button:
-                            xsize 100 ysize 40
-                            background Solid("#222222" if not combat_instance.can_player_act() else "#334455")
-                            sensitive combat_instance.can_player_act()
-                            
-                            # 描述 bm.desc
-                            hovered Show("tooltip_delay_timer", text=bm.desc)
-                            unhovered [Hide("tooltip_delay_timer"), Hide("floating_tooltip")]
-                            
-                            action [
-                                Function(combat_instance.execute_battle_move, bm, True), 
-                                Hide("tooltip_delay_timer"), 
-                                Hide("floating_tooltip")
-                            ]
-                            
-                            vbox:
-                                xalign 0.5
-                                text "[bm.name]" size 18 xalign 0.5 bold True
+                    grid 4 battle_move_rows:
+                        spacing 10
+                        xfill True
+                        yfill False
+                        for bm in current_battle_moves:
+                            button:
+                                xsize 100 ysize 40
+                                background Solid("#222222" if not combat_instance.can_player_act() else "#334455")
+                                hover_background Solid("#556677")
+                                sensitive combat_instance.can_player_act() and bm.id not in combat_instance.move_cooldowns
+                                hovered Show("tooltip_delay_timer", text=bm.desc)
+                                unhovered [Hide("tooltip_delay_timer"), Hide("floating_tooltip")]
+                                action [
+                                    Function(combat_instance.execute_battle_move, bm, True),
+                                    Hide("tooltip_delay_timer"),
+                                    Hide("floating_tooltip")
+                                ]
+                                vbox:
+                                    xalign 0.5
+                                    text "[bm.name]" size 18 xalign 0.5 bold True
 
-                text "攻击方式选择" size 18 color "#b0bec5" xalign 0.5
-                hbox:
-                    spacing 20
+                    text "攻击方式选择" size 18 color "#b0bec5" xalign 0.5
+                if is_prone:
+                    text "你摔倒在地，无法发动攻击！" size 16 color "#ff6b6b" xalign 0.5
+                elif not in_shelter:
                     $ current_attacks = combat_instance.player.get_available_attack_modes(
                         current_range=combat_instance.range
                     )
-                    for am in current_attacks:
-                        $ hit_chance = combat_instance.calculate_hit_chance(am, is_player=True)
-                        $ hit_color = "#4caf50" if hit_chance >= 0.7 else "#ffa726" if hit_chance >= 0.4 else "#f44336"
+                    $ attack_rows = max(2, (len(current_attacks) + 3) // 4)
 
-                        button:
-                            xsize 100 ysize 40
-                            background Solid("#222222" if not combat_instance.can_player_act() else "#445566")
-                            sensitive combat_instance.can_player_act()
-                            
-                            # 描述 am.desc
-                            hovered Show("tooltip_delay_timer", text=am.desc)
-                            unhovered [Hide("tooltip_delay_timer"), Hide("floating_tooltip")]
-                            
-                            action [
-                                Function(combat_instance.execute_attack, am, True), 
-                                Hide("tooltip_delay_timer"), 
-                                Hide("floating_tooltip")
-                            ]
-                            
-                            vbox:
-                                xalign 0.5
-                                text "[am.name]" size 18 xalign 0.5 bold True
+                    grid 4 attack_rows:
+                        spacing 10
+                        xfill True
+                        yfill False
+                        for am in current_attacks:
+                            $ hit_chance = combat_instance.calculate_hit_chance(am, is_player=True)
+                            $ hit_color = "#4caf50" if hit_chance >= 0.7 else "#ffa726" if hit_chance >= 0.4 else "#f44336"
 
-            # ===== 回合按钮 =====
-            null height 20  # 留白
-            if not combat_instance.is_finished:
+                            button:
+                                xsize 100 ysize 40
+                                background Solid("#222222" if not combat_instance.can_player_act() else "#445566")
+                                sensitive combat_instance.can_player_act()
+                                hovered Show("tooltip_delay_timer", text=am.desc)
+                                unhovered [Hide("tooltip_delay_timer"), Hide("floating_tooltip")]
+                                action [
+                                    Function(combat_instance.execute_attack, am, True),
+                                    Hide("tooltip_delay_timer"),
+                                    Hide("floating_tooltip")
+                                ]
+                                vbox:
+                                    xalign 0.5
+                                    text "[am.name]" size 18 xalign 0.5 bold True color hit_color
+                else:
+                    text "掩体中无法发动普通攻击。" size 16 color "#ffcc00" xalign 0.5
+
+                # ===== 回合按钮 =====
+                null height 20
                 if combat_instance.is_player_turn:
-                    # 操作背包后的提示（始终显示，不替代按钮）
                     if combat_instance.player_turn_disabled_by_inventory:
                         text "你因操作背包而失去了本回合的行动机会" size 20 color "#ffcc00" xalign 0.5
                     
-                    # 结束回合按钮始终可点击（只要战斗未结束）
                     button:
                         xalign 0.5
                         xsize 320 ysize 60
@@ -193,10 +233,11 @@ screen scr_combat(combat_instance):
                 else:
                     text "敌人正在行动..." size 20 color "#ffa726" xalign 0.5
             
-            # ===== 战斗结束界面 =====
-            if combat_instance.is_finished:
+            # ===== 战斗结束：只显示结果和结算按钮 =====
+            else:
                 frame:
-                    xfill False
+                    xalign 0.5
+                    xsize 320
                     background Solid("#2a2a3a")
                     padding (15, 10)
                     vbox:
@@ -206,10 +247,9 @@ screen scr_combat(combat_instance):
                         if combat_instance.winner == combat_instance.player:
                             text "战斗胜利" size 20 color "#4caf50" xalign 0.5
                             
-                            # 搜刮尸体按钮（只有击杀敌人才显示）
                             if not combat_instance.corpse_searched:
                                 button:
-                                    xsize 240
+                                    xsize 280
                                     ysize 45
                                     background Solid("#556644")
                                     hover_background Solid("#778866")
@@ -217,7 +257,7 @@ screen scr_combat(combat_instance):
                                     text "搜刮尸体" align (0.5, 0.5) size 18 color "#ffffff"
                             else:
                                 button:
-                                    xsize 240 ysize 45
+                                    xsize 280 ysize 45
                                     background Solid("#444444")
                                     sensitive False
                                     text "尸体已被搜刮" align (0.5, 0.5) size 18 color "#aaaaaa"
@@ -228,12 +268,11 @@ screen scr_combat(combat_instance):
                         elif combat_instance.winner is None:
                             text "敌人逃跑了" size 20 color "#ffa726" xalign 0.5
                             
-                        else:  # 玩家失败
+                        else:
                             text "战斗失败" size 20 color "#f44336" xalign 0.5
                         
-                        # 脱离战场结算按钮（总是显示）
                         button:
-                            xsize 240 ysize 45
+                            xsize 280 ysize 45
                             background Solid("#775555")
                             hover_background Solid("#997777")
                             action Return(["combat_end_trigger", combat_instance.winner])

@@ -1,34 +1,21 @@
 ﻿# =============================================================================
-# # 定义：游戏全局入口、初始标签（label start）、开发调试菜单（Dev Menu）。
-# # 实现：调用各个系统的初始化流程，重定向至序幕（prologue）；提供一键刷物品/怪物的测试工具。
+# script.rpy — 游戏全局入口与开发调试菜单
+# 功能：定义 label start 入口、splashscreen 启动画面、调试工具菜单
+# 职责：调用各系统初始化流程，重定向至序幕逻辑；提供开发阶段测试工具
 # =============================================================================
-
+# ── 调试工具函数集 ──
 init python:
+    # 移除原本映射到游戏菜单的按键（默认包含 'mouseup_3' 即右键）
+    config.keymap['game_menu'].remove('mouseup_3')
     def debug_add_test_items():
         """将测试物品加入玩家背包。"""
-        player_inventory.add_item_by_id(109)
-        player_inventory.add_item_by_id(110)
-        player_inventory.add_item_by_id(112)
-        player_inventory.add_item_by_id(113)
-        player_inventory.add_item_by_id(118)
-        player_inventory.add_item_by_id(154)
-        player_inventory.add_item_by_id(201)
+        player_inventory.add_item_by_id(166)
 
         player_stats.cigarettes = 9999
         renpy.notify("已添加测试物品")
 
-    def debug_open_shop_screen():
-        merchant_cfg = MERCHANT_WASTELAND_TRADER
-        merchant_inv = get_merchant_inventory(merchant_cfg)
-        renpy.show_screen("scr_shop",
-            player_inv=player_inventory,
-            merchant_inv=merchant_inv,
-            shop_type=merchant_cfg.shop_type,
-            barter_rate=1.0,
-            merchant_avatar=merchant_cfg.avatar_path,
-            merchant_name=merchant_cfg.name)
-
     def debug_skip_to_map():
+        """跳过序幕，直接进入大地图循环。"""
         global player_hex_x, player_hex_y, last_map_event_code
         import random
         player_hex_x, player_hex_y = random.choice(BIRTH_ZONE)  # ← 引用全局变量
@@ -40,7 +27,7 @@ init python:
         player_stats.fatigue = 0.0
         renpy.jump("travel_on_wasteland_loop")
 
-        # 四个独立调试函数
+    # ── 独立调试函数：属性快速调整 ──
     def debug_set_hp_999():
         """将玩家生命值设为999。"""
         player_stats.hp = 999.0
@@ -61,10 +48,11 @@ init python:
         player_stats.fatigue = 0.0
         renpy.notify("疲劳值已清空")
 
+# ── 启动画面样式常量 ──
+define splash_title_size = 90   # 工作室名尺寸
+define splash_text_size  = 50   # 声明文字尺寸
 
-define splash_title_size = 90   # 工作室名更大
-define splash_text_size  = 50   # 声明也更大
-
+# ── 启动画面样式定义 ──
 style splash_title:
     size 70
     color "#ffffff"
@@ -75,6 +63,7 @@ style splash_text:
     color "#ffffff"
     line_spacing 8
 
+# ── 启动画面（splashscreen） ──
 label splashscreen:
 
     # 提前播放主菜单音乐（循环播放，淡入1秒）
@@ -84,13 +73,13 @@ label splashscreen:
     scene black
     with Pause(0.5)
 
-    # --- 工作室名称（大号字，居中） ---
+    # ── 工作室名称（大号字，居中） ──
     show text "{size=[splash_title_size]}Cr3aM Studio{/size}" at truecenter with dissolve
     $ renpy.pause(2.0, hard=True)
     hide text with dissolve
     with Pause(0.5)
 
-    # --- 游戏声明（稍小但依然清晰，居中） ---
+    # ── 游戏声明 ──
     show text "{size=[splash_text_size]}\n本游戏可能含有恐怖、惊悚元素。\n游戏基于Ren'Py引擎制作，采用AI生成图像与音乐素材。\n本作为单机游戏，不收集任何个人信息。\n\n所有内容纯属虚构。\n如有雷同，纯属巧合。{/size}" at truecenter with dissolve
     $ renpy.pause(4.0, hard=True)
     hide text with dissolve
@@ -102,6 +91,7 @@ label splashscreen:
     
     return
 
+# ── 调试菜单界面 ──
 screen debug_dev_menu():
     modal True
     tag debug_menu
@@ -150,10 +140,6 @@ screen debug_dev_menu():
                 vbox:
                     xsize 220
                     spacing 6
-                    #textbutton "打开商城交易界面":
-                    #    xfill True
-                    #    text_size 16
-                    #    action [Hide("debug_dev_menu"), Function(debug_open_shop_screen)]
                     textbutton "饥饿值清0":
                         xfill True
                         text_size 16
@@ -176,10 +162,11 @@ screen debug_dev_menu():
                 action Hide("debug_dev_menu")
             key "K_ESCAPE" action Hide("debug_dev_menu")
 
+# ── 调试菜单快捷键监听 ──
 screen debug_listener():
     key "K_F12" action Show("debug_dev_menu")
 
-
+# ── 游戏主入口 ──
 label start:
     # 主题曲淡出（1.5秒）
     stop music fadeout 1.5
@@ -200,6 +187,7 @@ label start:
     # 平滑跨文件转移至序幕逻辑
     jump prologue_start
 
+# ── 清理待移除物品 ──
 label cleanup_pending_removals:
     python:
         while _pending_inventory_removals:

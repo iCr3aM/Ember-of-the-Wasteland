@@ -10,90 +10,78 @@ screen scr_hud():
         background Solid("#111111")
         xalign 0.5
         yalign 0.0
+        ysize 50
         padding (20, 10)
         
-        vbox:
-            spacing 5
+        hbox:            # 单行布局：时间 → 生命值 → 饥饿值 → 口渴值 → 疲劳值 → 香烟/抽烟
+            spacing 20
+            yalign 0.5
             
-            hbox:            # 时间显示
-                $ has_watch = (player_inventory.slots.get("left_wrist") is not None and player_inventory.slots["left_wrist"].id == 118)
-                if has_watch:
-                    text "时间: [get_time_period_str(game_time['hour'])] ([game_time['hour']]:[game_time['minute']:0>2])" size 20 color "#ffffff"
-                else:
-                    text "时间: [get_time_period_str(game_time['hour'])]" size 20 color "#ffffff"
+            # ── 时间显示 ──
+            $ has_watch = (player_inventory.slots.get("left_wrist") is not None and player_inventory.slots["left_wrist"].id == 118)
+            if has_watch:
+                text "时间: [get_time_period_str(game_time['hour'])] ([game_time['hour']]:[game_time['minute']:0>2])" size 16 color "#ffffff" yalign 0.5
+            else:
+                text "时间: [get_time_period_str(game_time['hour'])]" size 16 color "#ffffff" yalign 0.5
             
-            hbox:            # 状态条
-                spacing 30
+            # ── 生命值 ──
+            hbox:
+                spacing 5
+                yalign 0.5
+                text "生命值:" size 16 color "#ff4d4d" yalign 0.5
+                bar value player_stats.hp range player_stats.max_hp xsize 120 ysize 16 left_bar "#ff4d4d" right_bar "#551a1a" yalign 0.5
+                text f"{player_stats.hp:.0f}" size 16 yalign 0.5
+            
+            # ── 饥饿值 ──
+            hbox:
+                spacing 5
+                yalign 0.5
+                text "饥饿值:" size 16 color "#ffa500" yalign 0.5
+                bar value player_stats.hunger range 100.0 xsize 100 ysize 16 left_bar "#ffa500" right_bar "#4d3200" yalign 0.5
+                text f"{player_stats.hunger:.0f}/100" size 16 color "#ffa500" yalign 0.5
+            
+            # ── 口渴值 ──
+            hbox:
+                spacing 5
+                yalign 0.5
+                text "口渴值:" size 16 color "#3399ff" yalign 0.5
+                bar value player_stats.thirst range 100.0 xsize 100 ysize 16 left_bar "#3399ff" right_bar "#0f2d4d" yalign 0.5
+                text f"{player_stats.thirst:.0f}/100" size 16 color "#3399ff" yalign 0.5
+            
+            # ── 疲劳值 ──
+            hbox:
+                spacing 5
+                yalign 0.5
+                text "疲劳值:" size 16 color "#aa66cc" yalign 0.5
+                bar value player_stats.fatigue range 100.0 xsize 100 ysize 16 left_bar "#aa66cc" right_bar "#331133" yalign 0.5
+                text f"{player_stats.fatigue:.0f}/100" size 16 color "#aa66cc" yalign 0.5
+            
+            # ── 香烟显示 + 抽烟按钮（仅大地图） ──
+            if not is_in_active_combat():
                 hbox:
                     spacing 5
-                    text "生命值:" size 16 color "#ff4d4d"
-                    bar value player_stats.hp range player_stats.max_hp xsize 120 ysize 16 left_bar "#ff4d4d" right_bar "#551a1a"
-                    text f"{player_stats.hp:.0f}" size 16
-                hbox:
-                    spacing 5
-                    text "饥饿值:" size 16 color "#ffa500"
-                    bar value player_stats.hunger range 100.0 xsize 100 ysize 16 left_bar "#ffa500" right_bar "#4d3200"
-                    text f"{player_stats.hunger:.0f}/100" size 16 color "#ffa500"
-                hbox:
-                    spacing 5
-                    text "口渴值:" size 16 color "#3399ff"
-                    bar value player_stats.thirst range 100.0 xsize 100 ysize 16 left_bar "#3399ff" right_bar "#0f2d4d"
-                    text f"{player_stats.thirst:.0f}/100" size 16 color "#3399ff"
-                hbox:
-                    spacing 5
-                    text "疲劳值:" size 16 color "#aa66cc"
-                    bar value player_stats.fatigue range 100.0 xsize 100 ysize 16 left_bar "#aa66cc" right_bar "#331133"
-                    text f"{player_stats.fatigue:.0f}/100" size 16 color "#aa66cc"
+                    yalign 0.5
+                    text "香烟: [player_stats.cigarettes:.0f] 支" size 16 color "#ffd54f" yalign 0.5
+                    if player_stats.cigarettes >= 1:
+                        button:
+                            yalign 0.5
+                            background Solid("#554422")
+                            hover_background Solid("#776633")
+                            padding (8, 4)
+                            action Function(smoke_cigarette)
+                            text "抽烟" size 16 color "#ffffff" yalign 0.5
 
-    # 右侧负面状态指示（保持独立，但调整位置避免与主框架重叠）
+    # 负面状态指示（保持独立，但调整位置避免与主框架重叠）
     vbox:
         xalign 0.02
         yalign 0.15
         spacing 8
         for ac in player_stats.active_conditions:
-            if ac.id == COND_FAINT:
-                # "昏阙"状态特殊显示 - 绿色背景
-                button:
-                    background Solid("#225522")
-                    padding (4, 4)
-                    action NullAction()
-                    hovered Show("tooltip_delay_timer", text=ac.config.desc)
-                    unhovered [Hide("tooltip_delay_timer"), Hide("floating_tooltip")]
-                    text ac.config.name size 18 color "#88ff88"
-
-            elif ac.id == COND_SEVERE_FATIGUE:
-                # 重度疲劳 - 红色背景
-                button:
-                    background Solid("#552222")
-                    padding (5, 5)
-                    action NullAction()
-                    hovered Show("tooltip_delay_timer", text=ac.config.desc)
-                    unhovered [Hide("tooltip_delay_timer"), Hide("floating_tooltip")]
-                    hbox:
-                        spacing 5
-                        text f"{ac.config.name}" size 18 color "#ff6666"
-
-            elif ac.id == COND_FATIGUE:
-                # 普通疲劳 - 暗紫色背景
-                button:
-                    background Solid("#332244")
-                    padding (5, 5)
-                    action NullAction()
-                    hovered Show("tooltip_delay_timer", text=ac.config.desc)
-                    unhovered [Hide("tooltip_delay_timer"), Hide("floating_tooltip")]
-                    hbox:
-                        spacing 5
-                        text f"{ac.config.name}" size 18 color "#cc88ff"
-
-            elif ac.id not in (COND_FATIGUE, COND_SEVERE_FATIGUE):
-                button:
-                    background Solid("#222222")
-                    padding (5, 5)
-                    action NullAction()
-                    # 悬停时显示描述
-                    hovered Show("tooltip_delay_timer", text=ac.config.desc)
-                    unhovered [Hide("tooltip_delay_timer"), Hide("floating_tooltip")]
-                    
-                    hbox:
-                        spacing 5
-                        text f"{ac.config.name}" size 18 color "#ff3333"
+            $ _bg, _color = get_condition_display_colors(ac.id)
+            button:
+                background Solid(_bg)
+                padding (5, 5)
+                action NullAction()
+                hovered Show("tooltip_delay_timer", text=ac.config.desc)
+                unhovered [Hide("tooltip_delay_timer"), Hide("floating_tooltip")]
+                text ac.config.name size 18 color _color

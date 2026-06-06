@@ -37,3 +37,8 @@ bundle.keystore
 android.json
 android.keystore
 /.vscode/
+project.json
+/.venv/
+/venv/
+__pycache__/
+*.pyc

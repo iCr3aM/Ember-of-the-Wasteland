@@ -73,12 +73,22 @@ screen scr_map():
 
                                         if x == player_hex_x and y == player_hex_y:
                                             text "你" size 22 color "#000000" xalign 0.5 yalign 0.5
-                                            if getattr(tile, "scavenged", False):
-                                                text "已搜刮" size 12 color "#ffffff" xalign 0.9 yalign 0.9
+                                            if tile and has_ground_items(tile):
+                                                text "有物品" size 12 color "#ffcc00" xalign 0.1 yalign 0.1
+                                            if getattr(tile, "inspected", False):
+                                                if has_unsearched_points(tile):
+                                                    text "已探索" size 12 color "#ffffff" xalign 0.9 yalign 0.9
+                                                else:
+                                                    text "已搜刮" size 12 color "#aaaaaa" xalign 0.9 yalign 0.9
                                         else:
                                             text get_map_tile_label(tile.terrain_type) size 14 color "#ffffff" xalign 0.5 yalign 0.5
-                                            if tile and getattr(tile, "scavenged", False):
-                                                text "已搜刮" size 12 color "#ffffff" xalign 0.9 yalign 0.9
+                                            if tile and has_ground_items(tile):
+                                                text "有物品" size 12 color "#ffcc00" xalign 0.1 yalign 0.1
+                                            if tile and getattr(tile, "inspected", False):
+                                                if has_unsearched_points(tile):
+                                                    text "已探索" size 12 color "#ffffff" xalign 0.9 yalign 0.9
+                                                else:
+                                                    text "已搜刮" size 12 color "#aaaaaa" xalign 0.9 yalign 0.9
                     # 冒险日志
                     null height 10
                     frame:
@@ -108,11 +118,21 @@ screen scr_map():
                     spacing 15
                     text "行动指令" size 28 color "#ffaa00" xalign 0.5
                     $ current_tile = world_map.grid.get((player_hex_x, player_hex_y)) if world_map else None
-                    textbutton "原地搜刮" :
+                    $ _can_inspect = current_tile is not None and not getattr(current_tile, "inspected", False)
+                    $ _has_unsearched = current_tile is not None and has_unsearched_points(current_tile)
+                    $ _in_birth_zone = is_in_birth_protection_zone(player_hex_x, player_hex_y) if current_tile else False
+                    $ _birth_zone_blocked = _in_birth_zone and _starter_loot_claimed
+                    $ _inspect_label = "探索区域" if _can_inspect else "继续搜刮" if _has_unsearched else "探索完毕"
+
+                    textbutton "[_inspect_label]" :
                         xfill True
-                        # 如果当前位置已搜刮过，按钮不可用
-                        sensitive current_tile is not None and not getattr(current_tile, "scavenged", False)
-                        action Return("scavenge")
+                        # 出生保护区已领礼包 → 不可用；否则按正常逻辑
+                        sensitive current_tile is not None and not _birth_zone_blocked and (_can_inspect or _has_unsearched)
+                        action Return("inspect")
+                    textbutton "查看地面":
+                        xfill True
+                        sensitive current_tile is not None
+                        action Show("scr_ground_container", container=current_tile.ground_container, player_inv=player_inventory)
                     textbutton "打开背包" action Show("scr_inventory", inv_instance=player_inventory) xfill True
                     textbutton "扎营休息" action Return("camp") xfill True
                     

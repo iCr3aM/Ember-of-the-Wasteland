@@ -1,33 +1,39 @@
 # =============================================================================
-# # 地图与据点状态逻辑
-# # 定义：大地图的网格数据（如 2D地图的定义），据点（如新世界城）的解锁状态。 
-# # 实现：玩家在地图格子移动时的地形判定（消耗行动力 AP）、在该格子搜索资源的计算。
+# map.rpy — 地图与据点状态逻辑
+# 功能：定义大地图网格数据模型（HexTile/WorldMap）及移动/搜刮/地面容器逻辑
+# 职责：管理地形解析、移动消耗计算、时间推进、代谢 tick、地面容器衰减
 # =============================================================================
+# ── 地图数据模型 ──
 init python:
     class HexTile:
+        """地图格子：地形类型、搜刮状态、特殊标记、地面容器"""
         def __init__(self, terrain_type, treasure_id, special_feature=None, merchant_id=None):
             self.terrain_type = terrain_type
             self.treasure_id = treasure_id
-            self.scavenged = False
-            self.special_feature = special_feature  # "lake_water", "merchant", "city", None
+            self.special_feature = special_feature  # "lake_water" / "merchant" / None
             self.merchant_id = merchant_id
+            self.ground_container = Inventory(max_slots=128)  # 地面掉落容器
+            self.ground_last_checked_day = None               # 上次检查地面容器的游戏日
+            self.search_points = []       # 查看后生成的搜刮点列表
+            self.inspected = False        # 是否已查看过（替代 scavenged）
 
     class WorldMap:
-        """大地图网络矩阵"""
+        """大地图网格：管理所有 HexTile 实例的生成与查询"""
         def __init__(self, map_id, name, width, height, csv_def_string):
             self.id = map_id
             self.name = name
-            self.grid = {} # 坐标元组 (x, y) 映射 HexTile 实例
+            self.grid = {}  # (x, y) → HexTile 实例
             self.parse_map_data(width, height, csv_def_string)
 
         def parse_map_data(self, width, height, csv_str):
-            """解析 maps.xml 的 csv 数据结构"""
+            """解析 CSV 地形数据，生成 HexTile 网格"""
             lines = csv_str.strip().split('\n')
             for y in range(min(height, len(lines))):
                 cells = lines[y].split(',')
                 for x in range(min(width, len(cells))):
                     tid = int(cells[x])
-                    # 新的地形映射
+
+                    # 地形 ID → 类型映射
                     if tid == 0:    terrain = "ocean"
                     elif tid == 1:  terrain = "lake"
                     elif tid == 2:  terrain = "beach"
@@ -37,23 +43,23 @@ init python:
                     elif tid == 6:  terrain = "road"      
                     elif tid == 7:  terrain = "city_ruins"  
                     elif tid == 28: terrain = "plains"
-                    else:           terrain = "other"      # 兜底为"其他"
+                    else:           terrain = "other"      # 兜底
 
-                    # 特殊位置标记 (需要结合新地图调整坐标)
+                    # 特殊位置标记
                     special = None
                     merchant_id = None
-                    if (x, y) == (47, 20):  # 流浪商人
+                    if (x, y) == (47, 20):  # 流浪商人坐标
                         special = "merchant"
                         merchant_id = "wasteland_trader_01"
                     if terrain == "lake":
-                        special = "lake_water"
+                        special = "lake_water"  # 湖泊饮水事件
 
                     self.grid[(x, y)] = HexTile(terrain_type=terrain, treasure_id=tid, special_feature=special, merchant_id=merchant_id)          
 
-# 关键：这些 default 变量会被存档/读档管理
+# ── 全局地图实例（纳入存档系统） ──
 default map_width = 80
 default map_height = 40
-
+# 废土地图实例：80×40 网格，CSV 数据内联定义
 default world_map = WorldMap(
     1, "废土地图",
     map_width,
@@ -100,68 +106,64 @@ default world_map = WorldMap(
 28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,1,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28
 28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28"""
 )
-
+# ── 地图操作函数 ──
 init python:
     def get_current_tile():
-        """获取玩家当前所在格子的 HexTile 对象。如果 world_map 未初始化或坐标不在网格内，返回 None。"""
+        """获取玩家当前所在格子的 HexTile 对象"""
         if world_map is None:
             return None
         return world_map.grid.get((player_hex_x, player_hex_y))
 
-    def scavenge_current_tile():
-        global _starter_loot_claimed  # 新手礼包声明
+    def get_current_ground_container():
+        """获取当前格子的地面容器"""
         tile = get_current_tile()
-        if tile is None or getattr(tile, "scavenged", False):
-            return False, None
+        if tile is None:
+            return None
+        return tile.ground_container
 
-        tile.scavenged = True
-        player_stats.hunger = min(100.0, player_stats.hunger + SCAVENGE_COSTS['hunger'])
-        player_stats.thirst = min(100.0, player_stats.thirst + SCAVENGE_COSTS['thirst'])
-        player_stats.fatigue = min(100.0, player_stats.fatigue + SCAVENGE_COSTS['fatigue'])
-        update_thirst_condition(player_stats)
-        update_fatigue_condition(player_stats)
-        tick_minutes(player_stats, 5)
+    def has_ground_items(tile):
+        """检查格子地面容器是否有物品"""
+        if tile is None or tile.ground_container is None:
+            return False
+        for slot in tile.ground_container.backpack_slots:
+            if slot is not None:
+                return True
+        return False
 
-        # 出生保护区：仅首次搜刮给新手礼包
-        if is_in_birth_protection_zone(player_hex_x, player_hex_y) and not _starter_loot_claimed:
-            _starter_loot_claimed = True
-            starter_items = [201, 201, 144, 114, 140, 138, 132, 104, 111, 118, 154]
-            dropped_items = []
-            for item_id in starter_items:
-                new_item = create_item_instance(item_id)
-                player_inventory.add_item(new_item)
-                dropped_items.append(new_item)
-            item_names = "、".join(item.config.name for item in dropped_items)
-            adventure_log.append("你在废墟中翻出了一个旧世界的物资箱！里面装满了物资。")
-            event_code = trigger_random_map_event()
-            return True, event_code
+    def degrade_ground_container_items(tile, hours):
+        """对地面容器内所有物品应用耐久度衰减，耐久度为0的物品自动销毁"""
+        if tile is None:
+            return
+        for i, slot in enumerate(tile.ground_container.backpack_slots):
+            if slot is not None:
+                slot["item"].degrade(hours)
+                # ★ 耐久度为0时自动销毁，从地面容器移除
+                if slot["item"].durability <= 0:
+                    tile.ground_container.backpack_slots[i] = None
 
-        # ★ 根据地形选择对应的搜刮表 ★
-        treasure_id = TERRAIN_TREASURE_MAP.get(tile.terrain_type, TREASURE_SCRAP)
-        dropped_items = LootTable.roll_loot(treasure_id, overall_chance=0.5)
-        if player_inventory is not None and dropped_items:
-            for item in dropped_items:
-                player_inventory.add_item(item)
-            item_names = "、".join(item.config.name for item in dropped_items)
-            adventure_log.append(f"你搜刮到了：{item_names}")
-        else:
-            adventure_log.append("你翻遍了这片土地，一无所获。")
-
-        # 搜刮后检查是否因代谢死亡
-        if player_stats.hp <= 0:
-            player_stats.b_dead = True
-            
-        event_code = trigger_random_map_event()
-        return True, event_code
+    def try_steal_ground_container_item(tile):
+        """模拟 NPC 偷窃地面物品：20% 概率随机减少一个堆叠"""
+        if tile is None:
+            return
+        import random
+        non_empty = [i for i, slot in enumerate(tile.ground_container.backpack_slots) if slot is not None]
+        if non_empty and random.random() < 0.2:
+            idx = random.choice(non_empty)
+            slot = tile.ground_container.backpack_slots[idx]
+            slot["stack"] -= 1
+            if slot["stack"] <= 0:
+                tile.ground_container.backpack_slots[idx] = None
 
     def move_player_hex(target_x, target_y):
         """处理玩家在大地图格子的移动损耗，并联动推动时间与代谢"""
         global player_hex_x, player_hex_y, game_time, last_map_event_code
 
+        old_tile = get_current_tile()
+
         if not (0 <= target_x < map_width and 0 <= target_y < map_height):
             return None
 
-        # 检查目标格子是否可通行
+        # 目标格子可通行检查
         tile = world_map.grid.get((target_x, target_y))
         if tile and tile.terrain_type in ("ocean"):
             renpy.notify("那里是一望无际的{0}，你无法穿越。".format(get_map_tile_label(tile.terrain_type)))
@@ -195,15 +197,29 @@ init python:
         player_hex_y = target_y
 
         if not god_mode:
-            # 直接应用地形消耗（而不是以前的 TRAVEL_COSTS）
+            # 应用地形移动消耗
             player_stats.hunger = min(100.0, player_stats.hunger + hunger_cost)
             player_stats.thirst = min(100.0, player_stats.thirst + thirst_cost)
             player_stats.fatigue = min(100.0, player_stats.fatigue + fatigue_cost)
             update_thirst_condition(player_stats)
             update_fatigue_condition(player_stats)
+            update_hunger_condition(player_stats)
 
             # 按每5分钟步进应用基础代谢
             tick_minutes(player_stats, minutes)
+
+            # 离开的格子：地面物品耐久衰减 + NPC 偷窃
+            if old_tile is not None:
+                degrade_ground_container_items(old_tile, minutes / 60.0)
+
+                # 跨日时模拟 NPC 偷窃
+                if old_tile.ground_last_checked_day is None:
+                    old_tile.ground_last_checked_day = game_time["day"]
+                elif game_time["day"] > old_tile.ground_last_checked_day:
+                    for _ in range(game_time["day"] - old_tile.ground_last_checked_day):
+                        try_steal_ground_container_item(old_tile)
+                    old_tile.ground_last_checked_day = game_time["day"]
+
             # 赤脚检查：每走一格判定脚底割伤
             if player_inventory.is_barefoot():
                 player_stats.add_condition(COND_BARE_FOOT)
@@ -215,10 +231,57 @@ init python:
             
             update_thirst_condition(player_stats)
             update_fatigue_condition(player_stats)
+            update_hunger_condition(player_stats)
             
         # 移动后检查是否因代谢死亡
         if player_stats.hp <= 0:
             player_stats.b_dead = True
 
-        last_map_event_code = trigger_random_map_event()
+        last_map_event_code = None
         return last_map_event_code
+
+    def inspect_current_tile():
+        """查看当前区域：生成搜刮点"""
+        global _starter_loot_claimed
+        tile = get_current_tile()
+        if tile is None or getattr(tile, "inspected", False):
+            return False, None
+
+        # ★ 安全检测：出生保护区且已领过礼包 → 不允许查看
+        if is_in_birth_protection_zone(player_hex_x, player_hex_y) and _starter_loot_claimed:
+            return False, None
+
+        tile.inspected = True
+        
+        # 应用查看消耗
+        terrain_cost = SCAVENGE_COSTS.get(tile.terrain_type, SCAVENGE_COSTS["plains"])
+        player_stats.hunger = min(100.0, player_stats.hunger + terrain_cost["hunger"] )
+        player_stats.thirst = min(100.0, player_stats.thirst + terrain_cost["thirst"] )
+        player_stats.fatigue = min(100.0, player_stats.fatigue + terrain_cost["fatigue"] )
+        update_thirst_condition(player_stats)
+        update_fatigue_condition(player_stats)
+        update_hunger_condition(player_stats)
+        tick_minutes(player_stats, terrain_cost["minutes"])
+
+        # ★ 出生保护区：生成新手礼包搜刮点（仅一个）
+        if is_in_birth_protection_zone(player_hex_x, player_hex_y) and not _starter_loot_claimed:
+            tile.search_points = [SearchPoint(
+                point_id=SEARCH_POINT_STARTER_PACK,
+                name="旧世界的物资箱",
+                desc="一个布满灰尘的旧世界物资箱，里面似乎装满了物资。",
+            )]
+            adventure_log.append("你在废墟中翻出了一个旧世界的物资箱！")
+        else:
+            # 普通地形：正常生成搜刮点
+            tile.search_points = generate_search_points(tile.terrain_type)
+            if tile.search_points:
+                point_names = "、".join(p.name for p in tile.search_points)
+                adventure_log.append(f"你仔细观察了周围，发现了几个值得探索的地方：{point_names}")
+            else:
+                adventure_log.append("你仔细搜索了周围，但什么也没发现。")
+
+        if player_stats.hp <= 0:
+            player_stats.b_dead = True
+
+        event_code = None
+        return True, event_code

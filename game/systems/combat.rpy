@@ -3,6 +3,8 @@ init -180 python:
     import random
     # ===== 命中率基础配置 =====
     BASE_HIT_CHANCE = 0.85  # 基础命中率 85%
+    PLAYER_DAMAGE_MULTIPLIER = (0.80, 1.20)
+    PLAYER_HIT_MULTIPLIER = (0.90, 1.10)
     
     # 距离修正（距离越远，命中率越低）
     RANGE_HIT_MODIFIERS = {
@@ -27,23 +29,40 @@ init -180 python:
 
     _current_combat_instance = None
 
-
     class CombatSystem:
         def __init__(self, player, enemy_instance):
             self.player = player
             self.enemy = enemy_instance
-            self.range = renpy.random.randint(8, 16) # 初始距离随机在 8-16 米之间
-            self.combat_log = ["战斗开始！你遭遇了 " + enemy_instance.name]
+            self.range = renpy.random.randint(6, 16) # 初始距离随机在 8-16 米之间
+            # 词条前缀
+            if enemy_instance.trait_id is not None:
+                trait_name = CONDITIONS_DB[enemy_instance.trait_id].name
+                self.combat_log = [(f"战斗开始！你遭遇了【{trait_name}的{enemy_instance.name}】", "system")]
+            else:
+                self.combat_log = [(f"战斗开始！你遭遇了 {enemy_instance.name}", "system")]
             self.is_finished = False
             self.winner = None
             self.player_turn_disabled_by_inventory = False
             self.loot_drops = []
             self.corpse_searched = False
+            self.corpse_container = None
             self.is_player_turn = True
             self.player_acted_this_turn = False
-            self.player_faint_counter = 0
-            self.enemy_faint_counter = 0
-            self.entangle_cooldown = 0  # 缠绕冷却回合数
+            self.move_cooldowns = {}  # {move_id: remaining_turns}     
+            self.enemy_escape_attempted = False  # 敌人是否已尝试过逃跑       
+
+        def _log(self, text, owner="system"):
+            """
+            添加战斗日志条目，自动封装为 (文本, 归属) 元组。
+            
+            参数:
+                text: 日志文本
+                owner: 归属方标识，可选值：
+                    "player" — 玩家行为（显示为绿色）
+                    "enemy"  — 敌人行为（显示为红色）
+                    "system" — 系统/中立信息（显示为灰色，默认值）
+            """
+            self.combat_log.append((text, owner))
         
         def fade_out_music(self):
             """战斗开始时淡出背景音乐（1.5秒渐弱）。"""
@@ -56,10 +75,9 @@ init -180 python:
 
 
         def can_player_act(self):
-            """检查玩家是否可以执行战术动作/攻击（非昏阙、未行动、战斗未结束）。"""
+            """检查玩家是否可以执行战术动作/攻击（未行动、战斗未结束）。"""
             return (not self.player_acted_this_turn 
                     and not self.is_finished 
-                    and not is_fainted(self.player)
                     and not self.player_turn_disabled_by_inventory)
 
         # ================== 命中率相关方法 ==================
@@ -85,7 +103,17 @@ init -180 python:
             dodge_chance = BASE_DODGE_CHANCE * target_cond_mod
             
             # 限制范围 5%-99%
-            final_hit = max(0.05, min(0.99, hit_chance - dodge_chance))
+            final_hit = max(HIT_CHANCE_MIN, min(HIT_CHANCE_MAX, hit_chance - dodge_chance))
+
+            # 光照修正（昼夜系统）
+            is_ranged = weapon_type in ("pistol", "rifle", "throw")
+            light_mod = get_light_hit_modifier(game_time['hour'], is_ranged)
+            final_hit = max(HIT_CHANCE_MIN, min(HIT_CHANCE_MAX, final_hit * light_mod))
+
+            # 玩家命中率浮动（0.9~1.1），仅玩家攻击时生效
+            if is_player:
+                player_hit_mod = random.uniform(*PLAYER_HIT_MULTIPLIER)
+                final_hit = max(HIT_CHANCE_MIN, min(HIT_CHANCE_MAX, final_hit * player_hit_mod))
             
             return final_hit
         
@@ -94,14 +122,14 @@ init -180 python:
             for ids, weapon_type in WEAPON_TYPE_RULES:
                 if attack_mode.id in ids:
                     return weapon_type
-            return "melee"  # 默认回退
+            return "melee"
         
         def _get_range_modifier(self, current_range):
             """根据当前战斗距离（米）返回命中率修正系数。使用 RANGE_HIT_MODIFIERS 表进行区间映射。"""
             for zone_name, (min_r, max_r, modifier) in RANGE_HIT_MODIFIERS.items():
                 if min_r <= current_range <= max_r:
                     return modifier
-            return 0.5  # 超出所有范围
+            return RANGE_MOD_FALLBACK  # 超出所有范围
         
         def _get_condition_hit_modifier(self, actor):
             """计算 actor 当前挂载的所有状态对命中率的累加修正（基于 fHitChance 键）。返回倍率值。"""
@@ -140,71 +168,164 @@ init -180 python:
         def execute_battle_move(self, move_instance, is_player=True):
             """执行战术动作"""
 
-            # 如果用户是玩家且执行了逃离战斗（ID 6），并且距离已经 >= 20
-            if is_player and move_instance.id == 6 and self.range >= 20:
-                self.combat_log.append("你趁敌人不备，迅速逃离了战场！")
-                self.is_finished = True
-                self.winner = "player_escaped"  # 标记为玩家逃离
+            user = self.player if is_player else self.enemy
+            target = self.enemy if is_player else self.player
+
+            # ── 前置条件验证（兜底保护） ──
+            if not move_instance.is_usable(user, target, self.range):
+                self._log(f"{user.name} 无法执行 [{move_instance.name}]：条件不满足。", "system")
+                if is_player:
+                    self.player_acted_this_turn = True
+                return
+
+            if move_instance.id == 6:
+                # 先消耗基础三维（使用 BattleMove 定义的消耗值）
+                hunger_mod = user.get_modifier_multiplier('fHungerRate')
+                thirst_mod = user.get_modifier_multiplier('fThirstRate')
+                fatigue_mod = user.get_modifier_multiplier('fFatigueRate')
+                if is_player or self.range <= COMBAT_RANGE_MELEE_MAX:
+                    user.hunger = min(100.0, user.hunger + move_instance.hunger_cost * hunger_mod)
+                    user.thirst = min(100.0, user.thirst + move_instance.thirst_cost * thirst_mod)
+                user.fatigue = min(100.0, user.fatigue + move_instance.fatigue_cost * fatigue_mod)
+                update_thirst_condition(user)
+                update_hunger_condition(user)
+                update_fatigue_condition(user)
+                
+                # 逃离有 5% 概率摔倒
+                if random.random() < ESCAPE_TRIP_CHANCE:
+                    user.add_condition(COND_PRONE)
+                    self._log(f"{user.name} 在逃离过程中脚下不稳，重重摔倒在地！", "player" if is_player else "enemy")
+                
+                if is_player:
+                    enemy_hp_ratio = self.enemy.hp / self.enemy.max_hp
+                    close_penalty = ESCAPE_CLOSE_PENALTY_VALUE if self.range <= COMBAT_RANGE_CLOSE_PENALTY else 0
+                    
+                    if enemy_hp_ratio <= ESCAPE_HP_LOW:
+                        # 敌人已重伤，无力追击 → 自动成功脱离
+                        self._log("敌人已经重伤，无力追击。你成功脱离了战斗！", "player")
+                        self.is_finished = True
+                        self.winner = "player_escaped"
+                        return
+                    elif enemy_hp_ratio <= ESCAPE_HP_MID:
+                        # 敌人犹豫追击 → 拉开距离但战斗继续
+                        base_escape = ESCAPE_BASE_FLEE
+                        self.range = min(COMBAT_RANGE_ESCAPE, self.range + base_escape - close_penalty)
+                        self._log(f"你奋力奔逃，拉开了距离（当前{self.range}米），但敌人仍在后方紧追不舍。", "player")
+                    else:
+                        # 敌人状态良好，全力追击 → 只拉开少量距离
+                        base_escape = ESCAPE_BASE_CHASE
+                        self.range = min(COMBAT_RANGE_ESCAPE, self.range + base_escape - close_penalty)
+                        self._log(f"敌人怒吼着追了上来！你只拉开了少量距离（当前{self.range}米）。", "player")
+                    
+                    if is_player:
+                        self.player_acted_this_turn = True
+                    
+                    # 如果距离达到20米，判定脱离
+                    if self.range >= COMBAT_RANGE_ESCAPE:
+                        self._log("你成功拉开了足够远的距离，脱离了战斗！", "player")
+                        self.is_finished = True
+                        self.winner = "player_escaped"
+                        return
+                else:
+                    # 敌人使用逃离 — 基于玩家HP比例的智能判定
+                    player_hp_ratio = self.player.hp / self.player.max_hp
+                    close_penalty = ESCAPE_CLOSE_PENALTY_VALUE if self.range <= COMBAT_RANGE_CLOSE_PENALTY else 0
+                    
+                    if player_hp_ratio <= ESCAPE_HP_LOW:
+                        # 玩家已重伤，无力追击 → 自动成功脱离
+                        self._log(f"{self.enemy.name} 趁你重伤无力追击，成功逃离了战斗！", "enemy")
+                        self.is_finished = True
+                        self.winner = None
+                        return
+                    elif player_hp_ratio <= ESCAPE_HP_MID:
+                        # 玩家犹豫追击 → 拉开距离但战斗继续
+                        base_escape = ESCAPE_BASE_FLEE
+                        self.range = min(COMBAT_RANGE_ESCAPE, self.range + base_escape - close_penalty)
+                        self._log(f"{self.enemy.name} 拼命向后逃窜，拉开了距离（当前{self.range}米），但你仍在后方紧追不舍。", "enemy")
+                    else:
+                        # 玩家状态良好，全力追击 → 只拉开少量距离
+                        base_escape = ESCAPE_BASE_CHASE
+                        self.range = min(COMBAT_RANGE_ESCAPE, self.range + base_escape - close_penalty)
+                        self._log(f"{self.enemy.name} 试图逃跑，但你怒吼着追了上去！距离拉近到 {self.range}米。", "enemy")
+                    
+                    # 如果距离达到20米，判定脱离
+                    if self.range >= COMBAT_RANGE_ESCAPE:
+                        self._log(f"{self.enemy.name} 成功逃离了战场！", "enemy")
+                        self.is_finished = True
+                        self.winner = None
+                        return
                 return
 
             if self.is_finished:
                 return
 
-            user = self.player if is_player else self.enemy
-            target = self.enemy if is_player else self.player
+            # 冷却检查
+            if move_instance.id in self.move_cooldowns:
+                self._log(f"{user.name} 的 [{move_instance.name}] 还在冷却中（剩余{self.move_cooldowns[move_instance.id]}回合）！", "player" if is_player else "enemy")
+                if is_player:
+                    self.player_acted_this_turn = True
+                return
+
+            # 被缠绕状态无法执行移动与攻击
+            if any(ac.id == COND_ENTANGLED for ac in user.active_conditions):
+                self._log(f"{user.name} 被束缚住了，无法移动与攻击！", "player" if is_player else "enemy")
+                if is_player:
+                    self.player_acted_this_turn = True
+                return
+
+            # 摔倒状态只能执行"起身"动作
+            if any(ac.id == COND_PRONE for ac in user.active_conditions):
+                if move_instance.id != 12:  # 12 = 起身
+                    self._log(f"{user.name} 摔倒在地，必须先站起来才能做其他动作！", "player" if is_player else "enemy")
+                    if is_player:
+                        self.player_acted_this_turn = True
+                    return
 
             # 玩家始终消耗；敌人仅在近战距离（≤6米）消耗
-            if is_player or self.range <= 6:
-                user.hunger = min(100.0, user.hunger + move_instance.hunger_cost)
-                user.thirst = min(100.0, user.thirst + move_instance.thirst_cost)
-            user.fatigue = min(100.0, user.fatigue + move_instance.fatigue_cost)
+            hunger_mod = user.get_modifier_multiplier('fHungerRate')
+            thirst_mod = user.get_modifier_multiplier('fThirstRate')
+            fatigue_mod = user.get_modifier_multiplier('fFatigueRate')
+            if is_player or self.range <= COMBAT_RANGE_MELEE_MAX:
+                user.hunger = min(100.0, user.hunger + move_instance.hunger_cost * hunger_mod)  
+                user.thirst = min(100.0, user.thirst + move_instance.thirst_cost * thirst_mod)  
+            user.fatigue = min(100.0, user.fatigue + move_instance.fatigue_cost * fatigue_mod) 
 
             # 更新状态
             update_thirst_condition(user)
+            update_hunger_condition(user)
             update_fatigue_condition(user)
-
-            # 昏阙检测
-            if check_and_apply_faint(user, combat_instance=self, is_player=is_player):
-                return
 
             if user.b_dead:
                 self.is_finished = True
                 self.winner = target
-                self.combat_log.append(f"{user.name} 因徒劳的战斗消耗倒下了。")
+                self._log(f"{user.name} 因徒劳的战斗消耗倒下了。", "player" if is_player else "enemy")
                 return
 
             # 解析战术变更效果
             effects = move_instance.success_effects
             if "range_change" in effects:
                 self.range = max(1, self.range + effects["range_change"])
-                self.combat_log.append(f"{user.name} 执行了 [{move_instance.name}]，距离变为 {self.range}米。")
-                
-                # 距离变更后立即检查脱离条件
-                if self.range >= 20:
-                    if is_player:
-                        # 玩家：只要不昏阙，就算成功逃离
-                        if not is_fainted(self.player):
-                            self.combat_log.append("你成功拉开了距离，脱离了战斗！")
-                            self.is_finished = True
-                            self.winner = "player_escaped"  # 标记为玩家逃离
-                            return
-                    else:
-                        # 敌人：非人类不逃；人类按逃离率判定
-                        if not self.enemy.is_human:
-                            pass  # 非人类继续战斗
-                        elif random.random() < self.enemy.escape_rate and not is_fainted(self.player):
-                            self.combat_log.append(f"{self.enemy.name} 趁距离拉远，头也不回地逃走了！")
-                            self.is_finished = True
-                            self.winner = None  # 标记为敌人逃离
-                            return
-                        # 其他情况：战斗继续
+                self._log(f"{user.name} 执行了 [{move_instance.name}]，距离变为 {self.range}米。", "player" if is_player else "enemy")
 
             if "set_pose" in effects:
                 user.add_condition(COND_SHELTER)
-                self.combat_log.append(f"{user.name} 成功进入了隐蔽掩体。")
+                self._log(f"{user.name} 成功进入了隐蔽掩体。", "player" if is_player else "enemy")
+
+            if "unset_pose" in effects and effects["unset_pose"] == "cover":
+                remove_condition_by_id(user, COND_SHELTER)
+                self.move_cooldowns[4] = SHELTER_COOLDOWN_TURNS  # 进入掩体冷却
+                self._log(f"{user.name} 退出了掩体。", "player" if is_player else "enemy")
+
+            if "unset_pose" in effects and effects["unset_pose"] == "prone":
+                remove_condition_by_id(user, COND_PRONE)
+                self._log(f"{user.name} 迅速从地上爬了起来，重新站稳了脚跟。", "player" if is_player else "enemy")
 
             if is_player:
                 self.player_acted_this_turn = True
+
+            # 设置动作冷却
+            if move_instance.cooldown > 0:
+                self.move_cooldowns[move_instance.id] = move_instance.cooldown
 
         # ================== 执行攻击（加入命中率计算） ==================
         
@@ -212,36 +333,46 @@ init -180 python:
             """执行直接伤害攻击（包含命中率计算）"""
             if self.is_finished:
                 return
-            
+
             user = self.player if is_player else self.enemy
             target = self.enemy if is_player else self.player
+
+            # 摔倒状态无法攻击
+            if any(ac.id == COND_PRONE for ac in user.active_conditions):
+                self._log(f"{user.name} 摔倒在地，无法发动攻击！", "player" if is_player else "enemy")
+                if is_player:
+                    self.player_acted_this_turn = True
+                return
             
             # 消耗战斗相关资源 — 直接使用 AttackMode 实例的消耗属性
             hunger_mod = user.get_modifier_multiplier('fHungerRate')
             thirst_mod = user.get_modifier_multiplier('fThirstRate')
             fatigue_mod = user.get_modifier_multiplier('fFatigueRate')
 
-            if is_player or self.range <= 6:
+            if is_player or self.range <= COMBAT_RANGE_MELEE_MAX:
                 user.hunger = min(100.0, user.hunger + attack_mode.hunger_cost * hunger_mod)
                 user.thirst = min(100.0, user.thirst + attack_mode.thirst_cost * thirst_mod)
             user.fatigue = min(100.0, user.fatigue + attack_mode.fatigue_cost * fatigue_mod)
 
             update_thirst_condition(user)
+            update_hunger_condition(user)
             update_fatigue_condition(user)
-
-            # 昏阙检测
-            if check_and_apply_faint(user, combat_instance=self, is_player=is_player):
-                return
 
             if user.b_dead:
                 self.is_finished = True
                 self.winner = target
-                self.combat_log.append(f"{user.name} 因战斗消耗倒下，{target.name} 获得了上风。")
+                self._log(f"{user.name} 因战斗消耗倒下，{target.name} 获得了上风。", "player" if is_player else "enemy")
                 return
             
             # 距离判定（是否超出武器射程）
-            if self.range > attack_mode.range:
-                self.combat_log.append(f"{user.name} 试图使用 [{attack_mode.name}]，但距离太远落空了！")
+            if self.range < attack_mode.min_range:
+                self._log(f"{user.name} 试图使用 [{attack_mode.name}]，但距离太近无法施展！", "player" if is_player else "enemy")
+                if is_player:
+                    self.player_acted_this_turn = True
+                return
+            
+            if self.range > attack_mode.max_range:
+                self._log(f"{user.name} 试图使用 [{attack_mode.name}]，但距离太远落空了！", "player" if is_player else "enemy")
                 if is_player:
                     self.player_acted_this_turn = True
                 return
@@ -249,19 +380,29 @@ init -180 python:
             # 计算命中率
             hit_chance = self.calculate_hit_chance(attack_mode, is_player)
             roll = random.random()
+            weapon_type = self._determine_weapon_type(attack_mode)
+            
+            # ★ 冲撞（ID 103）无论是否命中，先减少距离 ★
+            if attack_mode.id == 103:
+                old_range = self.range
+                self.range = max(1, self.range - CHARGE_RANGE_REDUCE)
+                self._log(f"{user.name} 发动了冲撞，距离从 {old_range}米 拉近到 {self.range}米。", "player" if is_player else "enemy")
             
             # 命中判定
             if roll > hit_chance:
-                self.combat_log.append(
-                    f"{user.name} 使用 [{attack_mode.name}] 攻击未命中！"
-                )
+                self._log(f"{user.name} 使用 [{attack_mode.name}] 攻击未命中！", "player" if is_player else "enemy")
                 if is_player:
                     self.player_acted_this_turn = True
                 return
             
-            # 伤害计算（随机浮动 -40%，取整数）
+            # 伤害计算（取整数）
             base_damage = attack_mode.damage
-            damage_variance = random.uniform(0.60, 1.00)
+            
+            # 玩家使用独立浮动范围（0.8~1.2），敌人使用基础浮动（0.6~1.0）
+            if is_player:
+                damage_variance = random.uniform(*PLAYER_DAMAGE_MULTIPLIER)
+            else:
+                damage_variance = random.uniform(ENEMY_DAMAGE_MIN, ENEMY_DAMAGE_MAX)
             raw_dmg = int(base_damage * damage_variance)
             
             # 攻击方增益修正
@@ -276,52 +417,103 @@ init -180 python:
             if raw_dmg < 1:
                 raw_dmg = 1
             
-            # 应用伤害
-            target.hp -= raw_dmg
-            clamp_hp(target)
-            
-            self.combat_log.append(
-                f"{user.name} 使用 [{attack_mode.name}] 击中了 {target.name}，"
-                f"造成了 {raw_dmg} 点伤害！"
-            )
-            
-            # 附加状态
-            if attack_mode.attacker_conditions and random.random() <= attack_mode.condition_chance:
-                cond_to_apply = attack_mode.attacker_conditions[0]
-                # 缠绕冷却检查
-                if cond_to_apply == COND_ENTANGLED and self.entangle_cooldown > 0:
-                    pass  # 冷却中，不触发
+            # 掩体判定：在掩体中且未被击破 → 完全免伤
+            shelter_blocked = False
+            if any(ac.id == COND_SHELTER for ac in target.active_conditions):
+                if weapon_type in ("melee", "natural"):
+                    # 近战/天然武器：80% 概率击破掩体
+                    if random.random() < SHELTER_BREAK_MELEE:
+                        remove_condition_by_id(target, COND_SHELTER)
+                        if target is self.player:
+                            self.move_cooldowns[4] = SHELTER_COOLDOWN_TURNS
+                        self._log(f"{target.name} 的掩体被近身击破，退出了掩体状态。", "enemy" if is_player else "player")
+                    else:
+                        # 20% 掩体未被击破 → 完全挡住伤害
+                        shelter_blocked = True
+                        self._log(f"{user.name} 使用了 [{attack_mode.name}]，但是被 {target.name} 的掩体挡住了！", "enemy" if is_player else "player")
                 else:
-                    target.add_condition(cond_to_apply)
-                self.combat_log.append(
-                    f"{target.name} 被施加了状态: {CONDITIONS_DB[cond_to_apply].name}"
-                )
-                # 如果是缠绕，设置冷却（回合内不能再次使用）
-                if cond_to_apply == COND_ENTANGLED:
-                    self.entangle_cooldown = 3
+                    # 远程武器：20% 概率击破掩体
+                    if random.random() < SHELTER_BREAK_RANGED:
+                        remove_condition_by_id(target, COND_SHELTER)
+                        if target is self.player:
+                            self.move_cooldowns[4] = SHELTER_COOLDOWN_TURNS
+                        self._log(f"{target.name} 的掩体被远程攻击击破，退出了掩体状态。", "enemy" if is_player else "player")
+                    else:
+                        # 80% 掩体未被击破 → 完全挡住伤害
+                        shelter_blocked = True
+                        self._log(f"{user.name} 使用了 [{attack_mode.name}]，但是被 {target.name} 的掩体挡住了！", "enemy" if is_player else "player")
 
-                # 失衡日志
-                if cond_to_apply == COND_STAGGER:
-                    self.combat_log.append(f"{target.name} 被打得脚步踉跄，失去了平衡！")
-            
-            # 死亡检查
-            if target.hp <= 0:
-                target.b_dead = True
-                self.is_finished = True
-                self.winner = user
-                self.loot_drops = LootTable.roll_loot(
-                    target.treasure_id,
-                    overall_chance=0.6
-                )
-                self.corpse_searched = False
-                self.combat_log.append(f"{target.name} 已经倒在了废土血泊中。")
-                if self.loot_drops:
-                    self.combat_log.append("你可以搜刮敌人的尸体，获得战利品。")
-            else:
+            # 如果被掩体挡住，不造成伤害
+            if not shelter_blocked:
+                # 应用伤害
+                target.hp -= raw_dmg
+                clamp_hp(target)
+                
+                # ── 濒死/死亡状态更新（双方通用） ──
+                if target.hp <= 0:
+                    target.active_conditions = []
+                    target.add_condition(COND_DEAD)
+                else:
+                    remove_condition_by_id(target, COND_DEAD)
+                    if target.hp < target.max_hp * MORIBUND_HP_THRESHOLD:
+                        target.add_condition(COND_MORIBUND)
+                    else:
+                        remove_condition_by_id(target, COND_MORIBUND)
+                
+                self._log(f"{user.name} 使用 [{attack_mode.name}] 击中了 {target.name}，造成了 {raw_dmg} 点伤害！", "player" if is_player else "enemy")
+                
+                # 玩家攻击后标记
                 if is_player:
                     self.player_acted_this_turn = True
 
-        # ================== 重写：敌人AI（智能决策） ==================
+                # 附加状态（只有造成伤害时才施加）
+                if attack_mode.attacker_conditions and random.random() <= attack_mode.condition_chance:
+                    cond_to_apply = attack_mode.attacker_conditions[0]
+                    if cond_to_apply == COND_ENTANGLED and self.move_cooldowns.get(ENTANGLE_COOLDOWN_KEY, 0) > 0:
+                        pass
+                    else:
+                        target.add_condition(cond_to_apply)
+                    self._log(f"{target.name} 被施加了状态: {CONDITIONS_DB[cond_to_apply].name}", "enemy" if is_player else "player")
+                    if cond_to_apply == COND_ENTANGLED:
+                        self.move_cooldowns[ENTANGLE_COOLDOWN_KEY] = ENTANGLE_COOLDOWN_TURNS
+                    if cond_to_apply == COND_STAGGER:
+                        self._log(f"{target.name} 被打得脚步踉跄，失去了平衡！", "enemy" if is_player else "player")
+                
+                # 死亡检查 + 战利品掉落
+                if target.b_dead or target.hp <= 0:
+                    target.b_dead = True
+                    self.is_finished = True
+                    self.winner = user
+                    
+                    # ── 死亡状态：清空其他状态 ──
+                    if not target.is_player:
+                        target.active_conditions = []
+                        target.add_condition(COND_DEAD)
+                    
+                    # 只有敌人死亡时才掉落战利品
+                    if is_player:
+                        self.loot_drops = LootTable.roll_loot(
+                            target.treasure_id,
+                            overall_chance=LOOT_OVERALL_CHANCE
+                        )
+                        self.corpse_searched = False
+                        self.corpse_container = get_current_ground_container()
+                        if self.corpse_container is not None:
+                            for item in self.loot_drops:
+                                if not self.corpse_container.add_item(item):
+                                    player_inventory.add_item(item)
+                            self._log("你可以搜刮敌人的尸体，获得战利品。", "system")
+                        else:
+                            self._log("敌人的尸体掉落了战利品。", "system")
+                    else:
+                        # 玩家死亡，没有战利品掉落
+                        self._log(f"{target.name} 已经倒在了废土血泊中。", "enemy" if is_player else "player")
+            else:
+                # 被掩体挡住，但仍消耗行动
+                if is_player:
+                    self.player_acted_this_turn = True                    
+
+        # ================== 敌人AI（智能决策） ==================
         
         def enemy_ai_turn(self):
             """敌人AI回合 - 智能判定"""
@@ -330,54 +522,160 @@ init -180 python:
                 return
 
             # 玩家被缠绕 → 自动跳过敌人回合
-            if is_fainted(self.player):
-                pass  # 昏阙已有处理
-            elif any(ac.id == COND_ENTANGLED for ac in self.player.active_conditions):
-                self.combat_log.append("你被藤蔓紧紧缠住，无法行动！")
+            if any(ac.id == COND_ENTANGLED for ac in self.player.active_conditions):
+                self._log("你被藤蔓紧紧缠住，无法行动！", "player")
                 self.is_player_turn = True
                 return
-            
-            # 敌人昏阙检测
-            if check_and_apply_faint(self.enemy, combat_instance=self):
+
+            # 敌人被缠绕 → 自动跳过敌人回合
+            if any(ac.id == COND_ENTANGLED for ac in self.enemy.active_conditions):
+                self._log(f"{self.enemy.name} 被束缚住了，无法行动！", "enemy")
+                self.is_player_turn = True
                 return
 
-            if self.is_player_turn:
-                return
-            
             from random import choice as random_choice
             
             available_attacks = self.enemy.get_available_attack_modes(self.range)
             available_moves = self.enemy.get_available_battle_moves(self.player, self.range)
+
+
+            # 敌人摔倒 → 优先起身
+            if any(ac.id == COND_PRONE for ac in self.enemy.active_conditions):
+                stand_up_moves = [m for m in available_moves if m.id == 12]
+                if stand_up_moves:
+                    self.execute_battle_move(stand_up_moves[0], is_player=False)
+                    self.is_player_turn = True
+                    return
+                else:
+                    self._log(f"{self.enemy.name} 摔倒在地，挣扎着试图爬起来。", "enemy")
+                    self.is_player_turn = True
+                    return
+            
+            # ── 敌人濒死状态更新 ──
+            if not self.enemy.b_dead:
+                if self.enemy.hp < self.enemy.max_hp * MORIBUND_HP_THRESHOLD:
+                    self.enemy.add_condition(COND_MORIBUND)
+                else:
+                    remove_condition_by_id(self.enemy, COND_MORIBUND)
+
+            if self.is_player_turn:
+                return
             
             # === AI决策树 ===
             
-            # 血量极低（<30%）=> 优先逃跑
-            if self.enemy.hp < (self.enemy.max_hp * 0.3):
-                # 只有人类生物才有逃跑想法
-                if self.enemy.is_human and random.random() < self.enemy.escape_rate:
-                    
-                    # 如果玩家昏阙，敌人不应逃跑
-                    if is_fainted(self.player):
-                        pass  # 跳过逃跑
-                    else:
-                        escape_moves = [m for m in available_moves if m.success_effects.get("range_change", 0) > 0]
-                        if escape_moves:
-                            self.execute_battle_move(escape_moves[0], is_player=False)
-                            # 如果战斗已经因距离脱离结束，直接返回
+            # 血量极低（<30%）或三维接近危险值（>=80）=> 尝试逃跑（仅一次判定）
+            if (self.enemy.hp < (self.enemy.max_hp * MORIBUND_HP_THRESHOLD) or 
+                self.enemy.hunger >= 80.0 or 
+                self.enemy.thirst >= 80.0 or 
+                self.enemy.fatigue >= 80.0) and not self.enemy_escape_attempted:
+                self.enemy_escape_attempted = True
+                # 有自我保存意识的生物（人类或设置了逃跑率的生物）才会逃跑
+                if self.enemy.is_human or self.enemy.escape_rate > 0:
+                    # 优先使用"逃离战斗"（ID 6），无视距离限制
+                    # 概率由敌人的 escape_rate 决定
+                    escape_move = BATTLE_MOVES_DB.get(6)
+                    if escape_move and escape_move.is_usable(self.enemy, self.player, self.range) and 6 not in self.move_cooldowns and random.random() < self.enemy.escape_rate:
+                        self.execute_battle_move(escape_move, is_player=False)
+                        if self.is_finished:
+                            return
+                        self.is_player_turn = True
+                        return
+                        
+                    # 如果逃离在冷却中，使用其他能增加距离的动作
+                    escape_moves = [m for m in available_moves if m.success_effects.get("range_change", 0) > 0]
+                    if escape_moves:
+                        best_escape = max(escape_moves, key=lambda m: m.success_effects.get("range_change", 0))
+                        self.execute_battle_move(best_escape, is_player=False)
+                        if self.is_finished:
+                            return
+                        self.is_player_turn = True
+                        return
+
+            # 敌人在掩体中 → 只能使用掩体动作，不能攻击
+            if any(ac.id == COND_SHELTER for ac in self.enemy.active_conditions):
+                shelter_moves = [m for m in available_moves if m.id in (9, 10, 11)]
+                if shelter_moves:
+                    has_ranged = any(a.max_range >= COMBAT_RANGE_RANGED_MIN for a in available_attacks)
+                    if has_ranged:
+                        if self.range < COMBAT_RANGE_RANGED_MIN:
+                            retreat_shelter = [m for m in shelter_moves if m.id == 10]
+                            if retreat_shelter:
+                                self.execute_battle_move(retreat_shelter[0], is_player=False)
+                                if self.is_finished:
+                                    return
+                                self.is_player_turn = True
+                                return
+                        exit_move = [m for m in shelter_moves if m.id == 11]
+                        if exit_move:
+                            self.execute_battle_move(exit_move[0], is_player=False)
                             if self.is_finished:
                                 return
                             self.is_player_turn = True
                             return
-                # 如果不是人类或没有成功逃跑，则改为攻击或前进
+                    else:
+                        if self.range > COMBAT_RANGE_MELEE_ADVANCE:
+                            advance_shelter = [m for m in shelter_moves if m.id == 9]
+                            if advance_shelter:
+                                self.execute_battle_move(advance_shelter[0], is_player=False)
+                                if self.is_finished:
+                                    return
+                                self.is_player_turn = True
+                                return
+                        exit_move = [m for m in shelter_moves if m.id == 11]
+                        if exit_move:
+                            self.execute_battle_move(exit_move[0], is_player=False)
+                            if self.is_finished:
+                                return
+                            self.is_player_turn = True
+                            return
+                # 没有可用掩体动作 → 在掩体中等待
+                self._log(f"{self.enemy.name} 在掩体中等待时机。", "enemy")
+                self.is_player_turn = True
+                return
 
-            # 被缠绕/无法近身 => 使用远程攻击
-            entangled = any(ac.id == COND_ENTANGLED for ac in self.enemy.active_conditions)
-            if entangled and self.range > 2:
-                ranged_attacks = [a for a in available_attacks if a.range >= 8]
-                if ranged_attacks:
-                    self.execute_attack(random_choice(ranged_attacks), is_player=False)
+            # 远程敌人（有远程武器）→ 主动保持距离
+            has_ranged = any(a.max_range >= COMBAT_RANGE_RANGED_MIN for a in available_attacks)
+            if has_ranged and self.range < COMBAT_RANGE_RANGED_MIN:
+                retreat_moves = [m for m in available_moves if m.success_effects.get("range_change", 0) > 0]
+                if retreat_moves:
+                    best_retreat = max(retreat_moves, key=lambda m: m.success_effects.get("range_change", 0))
+                    self.execute_battle_move(best_retreat, is_player=False)
+                    if self.is_finished:
+                        return
                     self.is_player_turn = True
                     return
+
+            # 近战敌人（只有近战武器）→ 主动拉近距离
+            if not has_ranged and self.range > COMBAT_RANGE_MELEE_ADVANCE:
+                advance_moves = [m for m in available_moves if m.success_effects.get("range_change", 0) < 0]
+                if advance_moves:
+                    best_advance = max(advance_moves, key=lambda m: abs(m.success_effects.get("range_change", 0)))
+                    self.execute_battle_move(best_advance, is_player=False)
+                    if self.is_finished:
+                        return
+                    self.is_player_turn = True
+                    return
+
+            # 不在掩体中且可用 → 进入掩体（仅人类敌人，且不在冷却中）
+            # 条件：玩家有真正的远程武器（排除投掷杂物等低伤害攻击）
+            if self.enemy.is_human and not any(ac.id == COND_SHELTER for ac in self.enemy.active_conditions):
+                shelter_move = BATTLE_MOVES_DB.get(4)
+                if shelter_move and shelter_move.is_usable(self.enemy, self.player, self.range) and 4 not in self.move_cooldowns:
+                    # 概率判定：不是所有人类敌人都一定会进入掩体
+                    if random.random() >= SHELTER_ENTER_CHANCE_HUMAN:
+                        pass  # 跳过进入掩体，继续后续决策
+                    else:
+                        # 检查玩家是否有真正的远程武器
+                        player_attacks = self.player.get_available_attack_modes(self.range)
+                        player_has_real_ranged = any(
+                            a.max_range >= COMBAT_RANGE_RANGED_MIN and a.id not in (4, 8) for a in player_attacks
+                        )
+                        if player_has_real_ranged:
+                            self.execute_battle_move(shelter_move, is_player=False)
+                            if self.is_finished:
+                                return
+                            self.is_player_turn = True
+                            return
             
             # 距离太远没有合适攻击 => 突进
             if not available_attacks:
@@ -390,29 +688,18 @@ init -180 python:
                     return
                 else:
                     # 无法行动，跳过回合
-                    self.combat_log.append(f"{self.enemy.name} 在原地等待，无法发动有效攻击。")
+                    self._log(f"{self.enemy.name} 在原地等待，无法发动有效攻击。", "enemy")
                     self.is_player_turn = True
                     return
             
-            # 有多个攻击选项 => 选择预期伤害最高的
-            if available_attacks:
-                def expected_damage(attack):
-                    hit_chance = self.calculate_hit_chance(attack, is_player=False)
-                    return int(attack.damage * hit_chance)
-                
-                best_attack = max(available_attacks, key=expected_damage)
-                self.execute_attack(best_attack, is_player=False)
-                self.is_player_turn = True
-                return
-            
-            # 兜底：尝试前进
-            any_moves = [m for m in available_moves if m.success_effects.get("range_change", 0) < 0]
-            if any_moves:
-                self.execute_battle_move(any_moves[0], is_player=False)
-            else:
-                self.combat_log.append(f"{self.enemy.name} 似乎有点不知所措。")
+            # 有可用攻击 → 直接攻击
+            def expected_damage(attack):
+                hit_chance = self.calculate_hit_chance(attack, is_player=False)
+                return int(attack.damage * hit_chance)
+            best_attack = max(available_attacks, key=expected_damage)
+            self.execute_attack(best_attack, is_player=False)
             self.is_player_turn = True
-            renpy.restart_interaction()
+            return
 
         # ================== 保留原有 end_turn 和 search_corpse ==================
         
@@ -420,22 +707,21 @@ init -180 python:
             """结束己方回合 - 切换到敌人回合"""
             if not self.is_finished and self.is_player_turn:
 
-                # 减少缠绕冷却
-                if self.entangle_cooldown > 0:
-                    self.entangle_cooldown -= 1
-
                 # 先推进一回合时间（无论本回合后续战斗是否结束）
                 self._advance_one_turn()
+
+                # 减少所有战术动作冷却
+                for move_id in list(self.move_cooldowns.keys()):
+                    self.move_cooldowns[move_id] -= 1
+                    if self.move_cooldowns[move_id] <= 0:
+                        del self.move_cooldowns[move_id]
 
                 # 然后检查背包禁用标记，如果已禁用则记录日志
                 if self.player_turn_disabled_by_inventory:
                     self.player_turn_disabled_by_inventory = False
-                    self.combat_log.append("你因为操作背包而浪费了本回合的行动机会！")
+                    self._log("你因为操作背包而失去了本回合的行动机会！", "player")
                 elif not self.player_acted_this_turn:
-                    self.combat_log.append("你选择谨慎行事，没有做出任何行动就结束了本回合。")
-                
-                # 昏阙自动恢复检查（此时时间已推进，昏阙计数器会相应增加）
-                faint_recovery_check(self)
+                    self._log("你选择谨慎行事，没有做出任何行动就结束了本回合。", "player")
                 
                 self.is_player_turn = False
                 self.player_acted_this_turn = False
@@ -447,14 +733,24 @@ init -180 python:
             if not self.is_finished or self.winner != self.player or self.corpse_searched:
                 return
             self.corpse_searched = True
+
+            if self.corpse_container is not None and self.loot_drops:
+                item_names = "、".join(item.config.name for item in self.loot_drops)
+                for item in list(self.loot_drops):
+                    if self.corpse_container.remove_item(item):
+                        player_inventory.add_item(item)
+                self._log(f"你从尸体上搜刮到了：{item_names}。", "player")
+                self.loot_drops = []
+                return
+
             if self.loot_drops:
                 item_names = "、".join(item.config.name for item in self.loot_drops)
                 for item in self.loot_drops:
                     player_inventory.add_item(item)
-                self.combat_log.append(f"你从尸体上搜刮到了：{item_names}。")
+                self._log(f"你从尸体上搜刮到了：{item_names}。", "player")
+                self.loot_drops = []
             else:
-                self.combat_log.append("你搜刮了尸体，却没有找到任何有用的东西。")
-            self.loot_drops = []
+                self._log("你搜刮了尸体，没有找到任何有用的东西。", "system")
 
         def _advance_one_turn(self):
             """推进一回合（5分钟）的全局时间，并对双方应用基础代谢"""
@@ -471,5 +767,3 @@ init -180 python:
             # 双方应用代谢
             tick_minutes(self.player, 5)
             tick_minutes(self.enemy, 5)
-
-    
