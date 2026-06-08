@@ -161,7 +161,7 @@ init python:
     def use_raw_meat(actor):
         """使用不明生肉：-15 饥饿值，20%概率中毒"""
         actor.hunger = max(0.0, actor.hunger - 15.0)
-        if random.random() < 0.2:
+        if renpy.random.random() < 0.2:
             actor.add_condition(COND_POISON)
             renpy.notify("你吞下生肉，胃里立刻翻涌起一阵恶心——肉变质了。")
         else:
@@ -261,7 +261,7 @@ init python:
     def use_lake_algae(actor):
         """湖藻团：饥饿-6，15%中毒"""
         actor.hunger = max(0.0, actor.hunger - 6.0)
-        if random.random() < 0.15:
+        if renpy.random.random() < 0.15:
             actor.add_condition(COND_POISON)
             renpy.notify("你吞下腥苦的湖藻，胃里一阵翻涌——果然不该生吃。")
         else:
@@ -279,7 +279,7 @@ init python:
     def use_tide_crab(actor):
         """潮池小蟹：饥饿-8，25%中毒"""
         actor.hunger = max(0.0, actor.hunger - 8.0)
-        if random.random() < 0.25:
+        if renpy.random.random() < 0.25:
             actor.add_condition(COND_POISON)
             renpy.notify("你嚼碎了小螃蟹，壳很脆，但肚子立刻开始抗议。")
         else:
@@ -290,7 +290,7 @@ init python:
     def use_water_vine(actor):
         """水藤：口渴-15，20%中毒"""
         actor.thirst = max(0.0, actor.thirst - 15.0)
-        if random.random() < 0.20:
+        if renpy.random.random() < 0.20:
             actor.add_condition(COND_POISON)
             renpy.notify("你对着藤蔓切口喝了几口清水，但肚子里传来异样的绞痛。")
         else:
@@ -317,7 +317,7 @@ init python:
     def use_bird_egg(actor):
         """鸟蛋：饥饿-5，5%中毒"""
         actor.hunger = max(0.0, actor.hunger - 5.0)
-        if random.random() < 0.05:
+        if renpy.random.random() < 0.05:
             actor.add_condition(COND_POISON)
             renpy.notify("你生吞了鸟蛋，蛋液腥得呛喉，胃里一阵翻涌。")
         else:

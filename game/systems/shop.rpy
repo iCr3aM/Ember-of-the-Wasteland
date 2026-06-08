@@ -4,17 +4,6 @@
 # 实现：计算物品的最终成交价；执行货币（香烟）扣除逻辑。
 # =============================================================================
 init python:
-    # 商店类型常量
-    SHOP_TYPE_BLACK_MARKET = "black_market"      # 黑市：高卖低买
-    SHOP_TYPE_WASTELAND_TRADER = "wasteland_trader"  # 废土商人：中等汇率
-    SHOP_TYPE_NPC = "npc"                        # NPC：平价交易
-    
-    # 价格倍率映射 [买入倍率, 卖出倍率]
-    SHOP_PRICE_MODIFIERS = {
-        SHOP_TYPE_BLACK_MARKET: {"buy_multiplier": 2.0, "sell_multiplier": 0.5},
-        SHOP_TYPE_WASTELAND_TRADER: {"buy_multiplier": 1.5, "sell_multiplier": 0.6},
-        SHOP_TYPE_NPC: {"buy_multiplier": 1.2, "sell_multiplier": 0.8},
-    }
     # 临时变量，用于传递当前交易商人配置给独立标签
     _current_trade_trader_config = None
 
@@ -178,7 +167,6 @@ init python:
     def create_merchant_inventory(merchant_config):
         """根据稀有度权重生成商人库存（最多30件，每稀有度至少2件）"""
         inv = Inventory(max_slots=60)
-        import random
 
         MAX_MERCHANT_ITEMS = 30
         selected_ids = []
@@ -186,7 +174,7 @@ init python:
         # 1. 每个稀有度至少选2件
         for rarity, data in LOOT_RARITY.items():
             pool = list(data["items"])
-            random.shuffle(pool)
+            renpy.random.shuffle(pool)
             count = min(2, len(pool))
             for i in range(count):
                 selected_ids.append(pool[i])
@@ -203,7 +191,7 @@ init python:
                 if not weighted_pool:
                     break
                 total_weight = sum(w for _, w in weighted_pool)
-                roll = random.random() * total_weight
+                roll = renpy.random.random() * total_weight
                 cumulative = 0
                 chosen_id = weighted_pool[0][0]
                 for item_id, weight in weighted_pool:

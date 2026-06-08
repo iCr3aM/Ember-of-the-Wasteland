@@ -5,20 +5,20 @@
 # =============================================================================
 image bg bg_travel = "images/bg_travel.png"
 
-# ── 探索音乐冷却控制 ──
-init python:
-    import time
-    last_explore_music_time = 0.0       # 上次播放探索音乐的现实时间戳
-    EXPLORE_MUSIC_COOLDOWN = 1800.0     # 冷却时间：1800秒（30分钟）
-
 # ── 大地图主循环 ──
 label travel_on_wasteland_loop:
-    scene bg bg_travel
-    # 冷却已过且无播放时启动探索音乐（仅播放一次）
-    if not renpy.music.get_playing():
-        if time.time() - last_explore_music_time >= EXPLORE_MUSIC_COOLDOWN:
-            play music "audio/bgm_explore.mp3" fadein 1.0  # 移除 loop 参数，只播放一次
-            $ last_explore_music_time = time.time()
+    scene bg_travel
+    # 使用游戏内时间控制音乐冷却
+    if not renpy.music.get_playing(channel="music"):
+        $ _music_cooldown_passed = True
+        # 检查上次播放时间
+        if hasattr(store, '_last_explore_music_hour') and _last_explore_music_hour >= 0:
+            $ _hours_passed = (game_time['day'] - _last_explore_music_day) * 24 + (game_time['hour'] - _last_explore_music_hour)
+            $ _music_cooldown_passed = _hours_passed * 60 >= EXPLORE_MUSIC_COOLDOWN_MINUTES
+        if _music_cooldown_passed:
+            play music "audio/bgm_explore.mp3" noloop fadein 1.0
+            $ _last_explore_music_hour = game_time['hour']
+            $ _last_explore_music_day = game_time['day']
         else:
             pass
 
@@ -32,11 +32,10 @@ label travel_on_wasteland_loop:
     # 战斗后疲劳昏阙检测（fatigue ≥ 100 → 随机走1-3格后强制睡觉）
     if player_stats.fatigue >= 100.0:
         python:
-            import random
-            steps = random.randint(1, 3)
+            steps = renpy.random.randint(1, 3)
             directions = [(0, 1), (0, -1), (1, 0), (-1, 0), (1, 1), (-1, -1), (1, -1), (-1, 1)]
             for _ in range(steps):
-                dx, dy = random.choice(directions)
+                dx, dy = renpy.random.choice(directions)
                 new_x = player_hex_x + dx
                 new_y = player_hex_y + dy
                 if 0 <= new_x < map_width and 0 <= new_y < map_height:
@@ -58,11 +57,10 @@ label travel_on_wasteland_loop:
         $ fainted = check_and_trigger_faint_travel(player_stats)
         if fainted:
             python:
-                import random
-                steps = random.randint(1, 3)
+                steps = renpy.random.randint(1, 3)
                 directions = [(0, 1), (0, -1), (1, 0), (-1, 0), (1, 1), (-1, -1), (1, -1), (-1, 1)]
                 for _ in range(steps):
-                    dx, dy = random.choice(directions)
+                    dx, dy = renpy.random.choice(directions)
                     new_x = player_hex_x + dx
                     new_y = player_hex_y + dy
                     if 0 <= new_x < map_width and 0 <= new_y < map_height:
@@ -75,9 +73,6 @@ label travel_on_wasteland_loop:
             jump travel_on_wasteland_loop
         elif last_map_event_code and last_map_event_code in EVENT_LABEL_MAP:
             jump expression EVENT_LABEL_MAP[last_map_event_code]
-        elif current_tile and current_tile.special_feature == "lake_water":
-            "你来到了一片湖边，浑浊的水面泛着诡异的油彩光泽。"
-            jump travel_on_wasteland_loop
         else:
             "你继续前进到邻近的废土格子。"
             jump travel_on_wasteland_loop
@@ -123,26 +118,120 @@ label travel_on_wasteland_loop:
             $ _search_result = _return
             if isinstance(_search_result, (list, tuple)) and len(_search_result) >= 2:
                 if _search_result[0] == "event":
-                    jump expression _search_result[1]
-                elif _search_result[0] == "loot":
                     $ _clicked_point = _search_result[1]
-                    $ _encounter_triggered = False
+                    jump expression _clicked_point.event_label
+                    
+                elif _search_result[0] == "execute_search":       # ← 直接处理，不再经过 select_mode
+                    $ _point = _search_result[1]
+                    $ _mode = _search_result[2]
+                    
                     python:
-                        _encounter_triggered = roll_and_collect_search_point(_clicked_point)
+                        # 获取模式配置
+                        _mode_cfg = SEARCH_MODE_CONFIG[_mode]
+                        # 获取地形消耗
+                        _tile = get_current_tile()
+                        _terrain_cost = SCAVENGE_COSTS.get(
+                            _tile.terrain_type if _tile else "plains",
+                            SCAVENGE_COSTS["plains"]
+                        )
+                        # 计算实际耗时
+                        _base_minutes = _terrain_cost["minutes"]
+                        _actual_minutes = int(_base_minutes * _mode_cfg["time_multiplier"])
+                        
+                        # 推进时间
+                        game_time['minute'] += _actual_minutes
+                        while game_time['minute'] >= 60:
+                            game_time['minute'] -= 60
+                            game_time['hour'] += 1
+                            if game_time['hour'] >= 24:
+                                game_time['hour'] = 0
+                                game_time['day'] += 1
+                        
+                        # 应用三维消耗
+                        _hunger_cost = _terrain_cost["hunger"] * _mode_cfg["time_multiplier"]
+                        _thirst_cost = _terrain_cost["thirst"] * _mode_cfg["time_multiplier"]
+                        _fatigue_cost = _terrain_cost["fatigue"] * _mode_cfg["time_multiplier"]
+                        player_stats.hunger = min(100.0, player_stats.hunger + _hunger_cost)
+                        player_stats.thirst = min(100.0, player_stats.thirst + _thirst_cost)
+                        player_stats.fatigue = min(100.0, player_stats.fatigue + _fatigue_cost)
+                        tick_minutes(player_stats, _actual_minutes)
+                        
+                        # 获取动作描述文本
+                        _action_text, _end_text = get_search_action_text(_mode, has_loot=True)
+                    
+                    "[_action_text]"
+                    
+                    python:
+                        # 执行搜刮（传入模式）
+                        _encounter_triggered = roll_and_collect_search_point(_point, _mode)
+                    
+                    if player_stats.b_dead:
+                        jump game_over_death
+                    
                     if _encounter_triggered:
-                        jump event_encounter_default
-                # ★ 新增：新手礼包分支
-                elif _search_result[0] == "starter_pack":
-                    $ _clicked_point = _search_result[1]
-                    python:
-                        starter_items = roll_starter_pack()
-                        tile = get_current_tile()
-                        if tile and starter_items:
-                            for item in starter_items:
-                                tile.ground_container.add_item(item)
-                            item_names = "、".join(item.config.name for item in starter_items)
-                            adventure_log.append(f"你打开了物资箱，找到了：{item_names}")
-                        _clicked_point.searched = True
+                        python:
+                            # 生成敌人
+                            _tile = world_map.grid.get((player_hex_x, player_hex_y))
+                            _terrain = _tile.terrain_type if _tile else "plains"
+                            _enemy_pool = TERRAIN_ENEMY_MAP.get(_terrain, [1, 2, 3, 5, 6, 7, 8, 10, 12, 13])
+                            if not _enemy_pool:
+                                _enemy_pool = [1, 2, 3, 5, 6, 7, 8, 10, 12, 13]
+                            _candidates = {}
+                            for _cid in _enemy_pool:
+                                for _rarity, _data in ENEMY_RARITY.items():
+                                    if _cid in _data["enemies"]:
+                                        _candidates[_cid] = _data["weight"]
+                                        break
+                                else:
+                                    _candidates[_cid] = 50
+                            _total = sum(_candidates.values())
+                            _roll = renpy.random.random() * _total
+                            _cumulative = 0
+                            _creature_id = _enemy_pool[0]
+                            for _cid, _w in _candidates.items():
+                                _cumulative += _w
+                                if _roll <= _cumulative:
+                                    _creature_id = _cid
+                                    break
+                            _enemy = ActorInstance(creature_id=_creature_id, is_player=False)
+                            # 获取遇敌描述
+                            _encounter_desc = get_encounter_description(_enemy, _mode)
+                        
+                        python:
+                            for _text in _encounter_desc:
+                                renpy.say(None, _text)
+                        
+                        $ _current_combat_instance = CombatSystem(player_stats, _enemy)
+                        $ _current_combat_instance.combat_log = [(f"战斗开始！你遭遇了【{_enemy.name}】", "system")]
+                        call screen scr_combat(_current_combat_instance)
+                        $ _return_value = _return
+                        $ _current_combat_instance = None
+                        $ encounter_result = _return_value
+                        $ winner = None
+                        python:
+                            if encounter_result and isinstance(encounter_result, (list, tuple)) and encounter_result[0] == "combat_end_trigger":
+                                winner = encounter_result[1]
+                        if winner == player_stats:
+                            "你从战斗中幸存下来，身上的伤痕提醒你这片废土依然凶险。"
+                        elif winner == "player_escaped":
+                            "你成功甩开了敌人，安全地离开了战场。"
+                        elif winner is None:
+                            "敌人仓皇逃窜，消失在了荒野之中。"
+                        else:
+                            jump combat_death
+                    else:
+                        # 无遇敌，显示结束描述
+                        python:
+                            # 检查地面容器是否有新物品
+                            _tile = get_current_tile()
+                            _has_loot = False
+                            if _tile:
+                                for _slot in _tile.ground_container.backpack_slots:
+                                    if _slot is not None:
+                                        _has_loot = True
+                                        break
+                            _action_text, _end_text = get_search_action_text(_mode, has_loot=_has_loot)
+                        "[_end_text]"
 
             if _event_code and _event_code in EVENT_LABEL_MAP:
                 $ renpy.jump(EVENT_LABEL_MAP[_event_code])

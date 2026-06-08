@@ -4,7 +4,6 @@
 # =============================================================================
 # game/screens/scr_combat.rpy
 init python:
-
     def disable_player_turn_in_combat():
         """在背包操作后禁用玩家当前回合（如果正在战斗中）"""
         global _current_combat_instance
@@ -14,6 +13,31 @@ init python:
     def refresh_combat_display():
         """刷新战斗显示状态"""
         renpy.restart_interaction()
+
+    def get_combat_conditions_display(actor):
+        """返回 (条件列表, 颜色元组) 用于战斗界面显示"""
+        conditions = []
+        for ac in actor.active_conditions:
+            bg, color = get_condition_display_colors(ac.id)
+            conditions.append((ac.config.name, ac.config.desc, bg, color))
+        return conditions
+    
+    def get_combat_attack_info(combat, attack_mode):
+        """返回攻击的命中率和颜色"""
+        hit_chance = combat.calculate_hit_chance(attack_mode, is_player=True)
+        if hit_chance >= 0.7:
+            hit_color = "#4caf50"
+        elif hit_chance >= 0.4:
+            hit_color = "#ffa726"
+        else:
+            hit_color = "#f44336"
+        return hit_chance, hit_color
+    
+    def is_in_shelter(actor):
+        return any(ac.id == COND_SHELTER for ac in actor.active_conditions)
+    
+    def is_prone(actor):
+        return any(ac.id == COND_PRONE for ac in actor.active_conditions)
 
 screen scr_combat(combat_instance):
     # 战斗开始时淡出探索音乐（仅首次进入）
@@ -146,8 +170,8 @@ screen scr_combat(combat_instance):
                             text "打开背包" align (0.5,0.5) size 18 color "#ffffff"
                     null height 10
 
-                    $ in_shelter = any(ac.id == COND_SHELTER for ac in combat_instance.player.active_conditions)
-                    $ is_prone = any(ac.id == COND_PRONE for ac in combat_instance.player.active_conditions)
+                    $ player_in_shelter = is_in_shelter(combat_instance.player)
+                    $ player_is_prone = is_prone(combat_instance.player)
                     $ shelter_move_ids = [9, 10, 11]
                     $ prone_move_ids = [12]
 
@@ -156,9 +180,9 @@ screen scr_combat(combat_instance):
                         combat_instance.enemy, combat_instance.range
                     )
                     $ battle_move_rows = max(2, (len(current_battle_moves) + 3) // 4)
-                    if in_shelter:
+                    if player_in_shelter:
                         $ current_battle_moves = [bm for bm in current_battle_moves if bm.id in shelter_move_ids]
-                    if is_prone:
+                    if player_is_prone:
                         $ current_battle_moves = [bm for bm in current_battle_moves if bm.id in prone_move_ids]
 
                     grid 4 battle_move_rows:
@@ -183,9 +207,9 @@ screen scr_combat(combat_instance):
                                     text "[bm.name]" size 18 xalign 0.5 bold True
 
                     text "攻击方式选择" size 18 color "#b0bec5" xalign 0.5
-                if is_prone:
+                if player_is_prone:
                     text "你摔倒在地，无法发动攻击！" size 16 color "#ff6b6b" xalign 0.5
-                elif not in_shelter:
+                elif not player_in_shelter:
                     $ current_attacks = combat_instance.player.get_available_attack_modes(
                         current_range=combat_instance.range
                     )

@@ -79,7 +79,7 @@ init python:
 
         # ── 尼古丁戒断检测（仅玩家） ──
         if actor.is_player and last_cigarette_hour >= 0:
-            hours_since_last_smoke = (game_time['hour'] - last_cigarette_hour) % 24
+            hours_since_last_smoke = (game_time['day'] - last_cigarette_day) * 24 + (game_time['hour'] - last_cigarette_hour)
             if cigarettes_smoked >= NICOTINE_SEVERE_THRESHOLD:
                 if hours_since_last_smoke >= NICOTINE_SEVERE_HOURS:
                     if not any(ac.id == COND_NICOTINE_SEVERE for ac in actor.active_conditions):

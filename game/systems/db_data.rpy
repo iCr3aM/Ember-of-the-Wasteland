@@ -4,17 +4,17 @@
 # 职责：作为中央注册表，提供跨文件的数据互调中间件，确保存档/读档序列化安全
 # =============================================================================
 # ── 静态数据库注册表（init -100 确保最早加载） ──
-init -100:
+init -100 python:
     
     # 初始化所有静态数据库注册表
-    define ITEMS_DB = {}
-    define CONDITIONS_DB = {}
-    define BATTLE_MOVES_DB = {}
-    define CREATURES_DB = {}
-    define TREASURE_DB = {}
-    define MAPS_DB = {}
-    define EVENTS_DB = {}
-    define QUESTS_DB = {}
+    ITEMS_DB = {}
+    CONDITIONS_DB = {}
+    BATTLE_MOVES_DB = {}
+    CREATURES_DB = {}
+    TREASURE_DB = {}
+    MAPS_DB = {}
+    EVENTS_DB = {}
+    QUESTS_DB = {}
 
 # ── 动态运行时全局单例实例（纳入 Ren'Py 存档系统） ──
 default player_stats = None
@@ -25,13 +25,15 @@ default player_hex_x = 0
 default player_hex_y = 0
 default game_time = {"month": 1, "day": 1, "hour": 10, "minute": 0}
 default last_map_event_code = None
-default _starter_loot_claimed = False      # 新手礼包是否已领取
 default adventure_log = []                 # 冒险日志
 default god_mode = False                   # 调试：上帝模式
 default disable_encounters = False         # 调试：禁用遭遇战
 default _pending_inventory_removals = []   # 待处理的背包移除队列
 default cigarettes_smoked = 0            # 累计吸烟支数
 default last_cigarette_hour = -1         # 上次吸烟的游戏小时数（-1 表示从未吸烟）
+default last_cigarette_day = -1 
+default _last_explore_music_hour = -1
+default _last_explore_music_day = -1  
 
 # ── 工具函数：图标/头像路径解析 ──
 init python:
@@ -73,8 +75,7 @@ init python:
         # 只在第一次初始化时随机出生点
         if player_stats is None:
             player_stats = ActorInstance(creature_id=0, is_player=True)
-            import random
-            player_hex_x, player_hex_y = random.choice(BIRTH_ZONE)
+            player_hex_x, player_hex_y = renpy.random.choice(BIRTH_ZONE)
 
         if player_inventory is None:
             player_inventory = Inventory()

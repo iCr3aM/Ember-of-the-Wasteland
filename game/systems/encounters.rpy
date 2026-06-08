@@ -3,39 +3,6 @@
 # 功能：定义地形敌人池、战斗遭遇、湖泊饮水事件、扎营休息、昏阙恢复等事件
 # 职责：根据玩家位置/状态动态触发事件，处理选项分支与跳转
 # =============================================================================
-# ── 事件编号与地形敌人池 ──
-init -190 python:  
-    EVENT_ENCOUNTER_DEFAULT = 2001
-    #EVENT_ENCOUNTER_ = 2002
-    TEST_ENEMY_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 13]
-
-    TERRAIN_ENEMY_MAP = {
-        "road":       [13, 2],       # 拾荒帮众、流浪者
-        "plains":     [1, 2],        # 野狗、流浪者
-        "farmland":   [5, 13],       # 辐射鼠、拾荒帮众
-        "forest":     [6, 10],       # 幼芽寄生体、变异蜈蚣
-        "beach":      [5, 8],        # 辐射鼠、变异吸血虫
-        "city_ruins": [3, 4],        # 枯萎者、枯萎兽
-        "lake":       [1, 8],        # 野狗、变异吸血虫
-        "swamp":      [12, 4],       # 蝎尾蝇、枯萎兽
-        "ocean":      [],            # 无
-    }
-
-    EVENT_CONFIG = {
-        EVENT_ENCOUNTER_DEFAULT: {
-            "label": "event_encounter_default",
-            "name": "丛林低吼",
-            "type": "combat",
-        #},
-        #EVENT_ENCOUNTER_: {
-            #"label": "event_",
-            #"name": "",
-            #"type": "",
-        },
-    }
-
-    EVENT_LABEL_MAP = {event_id: data["label"] for event_id, data in EVENT_CONFIG.items()}
-
 # ── 事件标签 ──
 label encounter_lake_water:
 
@@ -73,13 +40,12 @@ label encounter_lake_water:
 
 label drink_lake_water_consequence:
     # 立即解除或缓解口渴
-    $ player_stats.thirst = max(0, player_stats.thirst - 40)  # 大量补水
+    $ player_stats.thirst = max(0, player_stats.thirst - LAKE_WATER_THIRST_RELIEF)
     $ update_thirst_condition(player_stats)  # 自动维护口渴状态（会自动移除脱水等状态）
-    $ import random
-    if random.randint(1, 100) <= 50:
+    if renpy.random.random() <= LAKE_WATER_POISON_CHANCE:
         # ----- 中招 -----
-        $ player_stats.hp = max(0, player_stats.hp - 15) 
-        $ player_stats.thirst += 20
+        $ player_stats.hp = max(0, player_stats.hp - LAKE_WATER_HP_DAMAGE)
+        $ player_stats.thirst += LAKE_WATER_THIRST_PENALTY
         $ player_stats.add_condition(COND_POISON)
 
         $ check_player_death(player_stats)
@@ -100,14 +66,35 @@ label drink_lake_water_consequence:
 label event_encounter_default:
 
     python:
-        import random
         # 根据当前地形选择敌人
         _tile = world_map.grid.get((player_hex_x, player_hex_y))
         _terrain = _tile.terrain_type if _tile else "plains"
-        _enemy_pool = TERRAIN_ENEMY_MAP.get(_terrain, TEST_ENEMY_IDS)
+        # 获取当前地形允许的敌人列表
+        _enemy_pool = TERRAIN_ENEMY_MAP.get(_terrain, [])
         if not _enemy_pool:
-            _enemy_pool = TEST_ENEMY_IDS  # 兜底（ocean 不会触发事件，但以防万一）
-        creature_id = random.choice(_enemy_pool)
+            _enemy_pool = [1, 2, 3, 5, 6, 7, 8, 10, 12, 13]  # 兜底：排除稀有敌人
+        
+        # 按稀有度权重抽取敌人
+        # 1. 收集该地形池中所有敌人及其稀有度权重
+        _candidates = {}  # creature_id -> weight
+        for _cid in _enemy_pool:
+            for _rarity, _data in ENEMY_RARITY.items():
+                if _cid in _data["enemies"]:
+                    _candidates[_cid] = _data["weight"]
+                    break
+            else:
+                _candidates[_cid] = 50  # 未分类的敌人给默认权重
+        
+        # 2. 按权重抽取
+        _total = sum(_candidates.values())
+        _roll = renpy.random.random() * _total
+        _cumulative = 0
+        creature_id = _enemy_pool[0]  # 兜底
+        for _cid, _w in _candidates.items():
+            _cumulative += _w
+            if _roll <= _cumulative:
+                creature_id = _cid
+                break
         enemy = ActorInstance(creature_id=creature_id, is_player=False)
         combat_instance = CombatSystem(player_stats, enemy)
         # 在战斗日志中显示敌人名称
@@ -138,7 +125,7 @@ label event_encounter_default:
     # 根据结果分支
     if winner == player_stats:
         # 玩家击杀敌人
-        "你从战斗中幸存下来，身上的伤痕提醒你这片废土依然凶险。"
+        "你从战斗中幸存下来，身上的伤痕提醒你这片废土依然险。"
     elif winner == "player_escaped":
         # 玩家主动逃离
         "你成功甩开了敌人，安全地离开了战场。"
@@ -161,7 +148,6 @@ label game_over_death:
         "疼痛渐渐远去，取而代之的是一种奇异的平静。\n你终于可以休息了。",
         "你的手指在沙土上无力地划过，留下最后一道痕迹。\n风很快会将它抹去，就像你从未存在过。",
         "你想起了一个早已模糊的画面——蓝色的天空，绿色的树。\n然后一切都暗了下来。",
-        "血液从伤口中缓缓流出，在干燥的地面上洇开一朵暗红色的花。\n你的眼睛望着天空，但已经什么都看不见了。",
         "废土上又多了一具无人认领的尸体。\n秃鹫会在天空中盘旋，等待它们的晚餐。",
         "你试图抓住什么，但手指只握住了虚空。\n意识像沙子一样从指缝间流走。",
     ]
@@ -205,8 +191,7 @@ label event_camp:
         jump travel_on_wasteland_loop
     
     # 随机确定睡眠时长（分钟）
-    $ import random
-    $ camp_sleep_minutes = random.randint(
+    $ camp_sleep_minutes = renpy.random.randint(
         CAMP_CONFIG['min_sleep_minutes'],
         CAMP_CONFIG['max_sleep_minutes']
     )

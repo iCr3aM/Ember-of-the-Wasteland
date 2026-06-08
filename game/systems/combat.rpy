@@ -1,39 +1,12 @@
 # game/systems/combat.rpy
 init -180 python:
-    import random
-    # ===== 命中率基础配置 =====
-    BASE_HIT_CHANCE = 0.85  # 基础命中率 85%
-    PLAYER_DAMAGE_MULTIPLIER = (0.80, 1.20)
-    PLAYER_HIT_MULTIPLIER = (0.90, 1.10)
-    
-    # 距离修正（距离越远，命中率越低）
-    RANGE_HIT_MODIFIERS = {
-        "point_blank": (1, 2, 1.0),    # 近身：-0%（基准）
-        "close": (3, 5, 0.9),          # 近距离：-10%
-        "medium": (6, 10, 0.75),       # 中距离：-25%
-        "long": (11, 15, 0.55),        # 远距离：-45%
-        "extreme": (16, 20, 0.40),     # 极限距离：-60%
-    }
-    
-    # 武器类型命中率基数
-    WEAPON_HIT_BASE = {
-        "melee": 0.95,    # 近战武器
-        "pistol": 0.80,   # 手枪
-        "rifle": 0.75,    # 步枪
-        "throw": 0.60,    # 投掷/杂物
-        "natural": 0.85,  # 天生武器（爪、牙等）
-    }
-    
-    # 闪避基础值
-    BASE_DODGE_CHANCE = 0.10  # 基础闪避率 10%
-
     _current_combat_instance = None
 
     class CombatSystem:
         def __init__(self, player, enemy_instance):
             self.player = player
             self.enemy = enemy_instance
-            self.range = renpy.random.randint(6, 16) # 初始距离随机在 8-16 米之间
+            self.range = renpy.random.randint(6, 16) # 初始距离随机在 6-16 米之间
             # 词条前缀
             if enemy_instance.trait_id is not None:
                 trait_name = CONDITIONS_DB[enemy_instance.trait_id].name
@@ -70,8 +43,17 @@ init -180 python:
                 renpy.music.stop(fadeout=1.5)
         
         def restore_music(self):
-            """战斗结束后恢复大地图探索音乐。"""
-            renpy.music.play("audio/bgm_explore.mp3", fadein=1.0, loop=True)
+            if (hasattr(store, '_last_explore_music_hour') and hasattr(store, '_last_explore_music_day') 
+                and _last_explore_music_hour >= 0 and _last_explore_music_day >= 0):
+                hours_passed = (game_time['day'] - _last_explore_music_day) * 24 + (game_time['hour'] - _last_explore_music_hour)
+                if hours_passed * 60 >= EXPLORE_MUSIC_COOLDOWN_MINUTES:
+                    renpy.music.play("audio/bgm_explore.mp3", fadein=1.0, loop=False)
+                    _last_explore_music_hour = game_time['hour']
+                    _last_explore_music_day = game_time['day']  
+            else:
+                renpy.music.play("audio/bgm_explore.mp3", fadein=1.0, loop=False)
+                _last_explore_music_hour = game_time['hour']
+                _last_explore_music_day = game_time['day']   
 
 
         def can_player_act(self):
@@ -112,7 +94,7 @@ init -180 python:
 
             # 玩家命中率浮动（0.9~1.1），仅玩家攻击时生效
             if is_player:
-                player_hit_mod = random.uniform(*PLAYER_HIT_MULTIPLIER)
+                player_hit_mod = renpy.random.uniform(*PLAYER_HIT_MULTIPLIER)
                 final_hit = max(HIT_CHANCE_MIN, min(HIT_CHANCE_MAX, final_hit * player_hit_mod))
             
             return final_hit
@@ -192,7 +174,7 @@ init -180 python:
                 update_fatigue_condition(user)
                 
                 # 逃离有 5% 概率摔倒
-                if random.random() < ESCAPE_TRIP_CHANCE:
+                if renpy.random.random() < ESCAPE_TRIP_CHANCE:
                     user.add_condition(COND_PRONE)
                     self._log(f"{user.name} 在逃离过程中脚下不稳，重重摔倒在地！", "player" if is_player else "enemy")
                 
@@ -201,10 +183,11 @@ init -180 python:
                     close_penalty = ESCAPE_CLOSE_PENALTY_VALUE if self.range <= COMBAT_RANGE_CLOSE_PENALTY else 0
                     
                     if enemy_hp_ratio <= ESCAPE_HP_LOW:
-                        # 敌人已重伤，无力追击 → 自动成功脱离
                         self._log("敌人已经重伤，无力追击。你成功脱离了战斗！", "player")
                         self.is_finished = True
                         self.winner = "player_escaped"
+                        if move_instance.cooldown > 0:
+                            self.move_cooldowns[move_instance.id] = move_instance.cooldown
                         return
                     elif enemy_hp_ratio <= ESCAPE_HP_MID:
                         # 敌人犹豫追击 → 拉开距离但战斗继续
@@ -225,6 +208,8 @@ init -180 python:
                         self._log("你成功拉开了足够远的距离，脱离了战斗！", "player")
                         self.is_finished = True
                         self.winner = "player_escaped"
+                        if move_instance.cooldown > 0:
+                            self.move_cooldowns[move_instance.id] = move_instance.cooldown
                         return
                 else:
                     # 敌人使用逃离 — 基于玩家HP比例的智能判定
@@ -232,10 +217,11 @@ init -180 python:
                     close_penalty = ESCAPE_CLOSE_PENALTY_VALUE if self.range <= COMBAT_RANGE_CLOSE_PENALTY else 0
                     
                     if player_hp_ratio <= ESCAPE_HP_LOW:
-                        # 玩家已重伤，无力追击 → 自动成功脱离
                         self._log(f"{self.enemy.name} 趁你重伤无力追击，成功逃离了战斗！", "enemy")
                         self.is_finished = True
                         self.winner = None
+                        if move_instance.cooldown > 0:
+                            self.move_cooldowns[move_instance.id] = move_instance.cooldown
                         return
                     elif player_hp_ratio <= ESCAPE_HP_MID:
                         # 玩家犹豫追击 → 拉开距离但战斗继续
@@ -253,7 +239,11 @@ init -180 python:
                         self._log(f"{self.enemy.name} 成功逃离了战场！", "enemy")
                         self.is_finished = True
                         self.winner = None
+                        if move_instance.cooldown > 0:
+                            self.move_cooldowns[move_instance.id] = move_instance.cooldown
                         return
+                if move_instance.cooldown > 0:
+                    self.move_cooldowns[move_instance.id] = move_instance.cooldown
                 return
 
             if self.is_finished:
@@ -379,14 +369,13 @@ init -180 python:
             
             # 计算命中率
             hit_chance = self.calculate_hit_chance(attack_mode, is_player)
-            roll = random.random()
+            roll = renpy.random.random()
             weapon_type = self._determine_weapon_type(attack_mode)
             
             # ★ 冲撞（ID 103）无论是否命中，先减少距离 ★
             if attack_mode.id == 103:
                 old_range = self.range
                 self.range = max(1, self.range - CHARGE_RANGE_REDUCE)
-                self._log(f"{user.name} 发动了冲撞，距离从 {old_range}米 拉近到 {self.range}米。", "player" if is_player else "enemy")
             
             # 命中判定
             if roll > hit_chance:
@@ -400,9 +389,9 @@ init -180 python:
             
             # 玩家使用独立浮动范围（0.8~1.2），敌人使用基础浮动（0.6~1.0）
             if is_player:
-                damage_variance = random.uniform(*PLAYER_DAMAGE_MULTIPLIER)
+                damage_variance = renpy.random.uniform(*PLAYER_DAMAGE_MULTIPLIER)
             else:
-                damage_variance = random.uniform(ENEMY_DAMAGE_MIN, ENEMY_DAMAGE_MAX)
+                damage_variance = renpy.random.uniform(ENEMY_DAMAGE_MIN, ENEMY_DAMAGE_MAX)
             raw_dmg = int(base_damage * damage_variance)
             
             # 攻击方增益修正
@@ -422,7 +411,7 @@ init -180 python:
             if any(ac.id == COND_SHELTER for ac in target.active_conditions):
                 if weapon_type in ("melee", "natural"):
                     # 近战/天然武器：80% 概率击破掩体
-                    if random.random() < SHELTER_BREAK_MELEE:
+                    if renpy.random.random() < SHELTER_BREAK_MELEE:
                         remove_condition_by_id(target, COND_SHELTER)
                         if target is self.player:
                             self.move_cooldowns[4] = SHELTER_COOLDOWN_TURNS
@@ -433,7 +422,7 @@ init -180 python:
                         self._log(f"{user.name} 使用了 [{attack_mode.name}]，但是被 {target.name} 的掩体挡住了！", "enemy" if is_player else "player")
                 else:
                     # 远程武器：20% 概率击破掩体
-                    if random.random() < SHELTER_BREAK_RANGED:
+                    if renpy.random.random() < SHELTER_BREAK_RANGED:
                         remove_condition_by_id(target, COND_SHELTER)
                         if target is self.player:
                             self.move_cooldowns[4] = SHELTER_COOLDOWN_TURNS
@@ -467,17 +456,17 @@ init -180 python:
                     self.player_acted_this_turn = True
 
                 # 附加状态（只有造成伤害时才施加）
-                if attack_mode.attacker_conditions and random.random() <= attack_mode.condition_chance:
+                if attack_mode.attacker_conditions and renpy.random.random() <= attack_mode.condition_chance:
                     cond_to_apply = attack_mode.attacker_conditions[0]
                     if cond_to_apply == COND_ENTANGLED and self.move_cooldowns.get(ENTANGLE_COOLDOWN_KEY, 0) > 0:
-                        pass
+                        pass  # 缠绕冷却中，跳过
                     else:
                         target.add_condition(cond_to_apply)
-                    self._log(f"{target.name} 被施加了状态: {CONDITIONS_DB[cond_to_apply].name}", "enemy" if is_player else "player")
-                    if cond_to_apply == COND_ENTANGLED:
-                        self.move_cooldowns[ENTANGLE_COOLDOWN_KEY] = ENTANGLE_COOLDOWN_TURNS
-                    if cond_to_apply == COND_STAGGER:
-                        self._log(f"{target.name} 被打得脚步踉跄，失去了平衡！", "enemy" if is_player else "player")
+                        self._log(f"{target.name} 被施加了状态: {CONDITIONS_DB[cond_to_apply].name}", "enemy" if is_player else "player")
+                        if cond_to_apply == COND_ENTANGLED:
+                            self.move_cooldowns[ENTANGLE_COOLDOWN_KEY] = ENTANGLE_COOLDOWN_TURNS
+                        if cond_to_apply == COND_STAGGER:
+                            self._log(f"{target.name} 被打得脚步踉跄，失去了平衡！", "enemy" if is_player else "player")
                 
                 # 死亡检查 + 战利品掉落
                 if target.b_dead or target.hp <= 0:
@@ -500,10 +489,10 @@ init -180 python:
                         self.corpse_container = get_current_ground_container()
                         if self.corpse_container is not None:
                             for item in self.loot_drops:
-                                if not self.corpse_container.add_item(item):
-                                    player_inventory.add_item(item)
+                                self.corpse_container.add_item(item)
                             self._log("你可以搜刮敌人的尸体，获得战利品。", "system")
                         else:
+                            # 没有地面容器时，战利品留在 loot_drops 中，由 search_corpse 处理
                             self._log("敌人的尸体掉落了战利品。", "system")
                     else:
                         # 玩家死亡，没有战利品掉落
@@ -532,8 +521,6 @@ init -180 python:
                 self._log(f"{self.enemy.name} 被束缚住了，无法行动！", "enemy")
                 self.is_player_turn = True
                 return
-
-            from random import choice as random_choice
             
             available_attacks = self.enemy.get_available_attack_modes(self.range)
             available_moves = self.enemy.get_available_battle_moves(self.player, self.range)
@@ -571,10 +558,11 @@ init -180 python:
                 self.enemy_escape_attempted = True
                 # 有自我保存意识的生物（人类或设置了逃跑率的生物）才会逃跑
                 if self.enemy.is_human or self.enemy.escape_rate > 0:
+                    self.enemy_escape_attempted = True
                     # 优先使用"逃离战斗"（ID 6），无视距离限制
                     # 概率由敌人的 escape_rate 决定
                     escape_move = BATTLE_MOVES_DB.get(6)
-                    if escape_move and escape_move.is_usable(self.enemy, self.player, self.range) and 6 not in self.move_cooldowns and random.random() < self.enemy.escape_rate:
+                    if escape_move and escape_move.is_usable(self.enemy, self.player, self.range) and 6 not in self.move_cooldowns and renpy.random.random() < self.enemy.escape_rate:
                         self.execute_battle_move(escape_move, is_player=False)
                         if self.is_finished:
                             return
@@ -662,7 +650,7 @@ init -180 python:
                 shelter_move = BATTLE_MOVES_DB.get(4)
                 if shelter_move and shelter_move.is_usable(self.enemy, self.player, self.range) and 4 not in self.move_cooldowns:
                     # 概率判定：不是所有人类敌人都一定会进入掩体
-                    if random.random() >= SHELTER_ENTER_CHANCE_HUMAN:
+                    if renpy.random.random() >= SHELTER_ENTER_CHANCE_HUMAN:
                         pass  # 跳过进入掩体，继续后续决策
                     else:
                         # 检查玩家是否有真正的远程武器
@@ -735,15 +723,17 @@ init -180 python:
             self.corpse_searched = True
 
             if self.corpse_container is not None and self.loot_drops:
-                item_names = "、".join(item.config.name for item in self.loot_drops)
+                # 从地面容器移到玩家背包
                 for item in list(self.loot_drops):
                     if self.corpse_container.remove_item(item):
                         player_inventory.add_item(item)
+                item_names = "、".join(item.config.name for item in self.loot_drops)
                 self._log(f"你从尸体上搜刮到了：{item_names}。", "player")
                 self.loot_drops = []
                 return
 
             if self.loot_drops:
+                # 没有地面容器时，直接从 loot_drops 加入背包
                 item_names = "、".join(item.config.name for item in self.loot_drops)
                 for item in self.loot_drops:
                     player_inventory.add_item(item)

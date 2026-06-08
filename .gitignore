@@ -42,3 +42,4 @@ project.json
 /venv/
 __pycache__/
 *.pyc
+/doc/

@@ -364,11 +364,10 @@ init python:
 
         def remove_one_random_item(self):
             """随机移除一个背包物品（堆叠减1，归零则清空格子）"""
-            import random
             indices = [i for i, slot in enumerate(self.backpack_slots) if slot is not None]
             if not indices:
                 return False
-            idx = random.choice(indices)
+            idx = renpy.random.choice(indices)
             slot = self.backpack_slots[idx]
             slot["stack"] -= 1
             if slot["stack"] <= 0:

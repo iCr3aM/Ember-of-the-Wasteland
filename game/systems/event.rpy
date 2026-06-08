@@ -4,7 +4,6 @@
 # # 实现：根据玩家所在的地形（森林、废墟）以及昼夜时间，决定这一格是弹出“空无一人”、触发 `encounters.py` 的剧情、还是直接拉进 `combat.rpy` 的战斗。
 # =============================================================================
 init python:
-    import random
     # 安全获取 BIRTH_ZONE
     try:
         _birth_zone = BIRTH_ZONE
@@ -31,7 +30,7 @@ init python:
                 "ocean":      0.00,
             }
             _chance = _chance_map.get(tile_instance.terrain_type, 0.20)
-            if random.random() > _chance:
+            if renpy.random.random() > _chance:
                 return None
                 
             # 获取当前小时

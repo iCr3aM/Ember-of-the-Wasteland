@@ -26,6 +26,7 @@ style gui_text:
 
 style button:
     properties gui.button_properties("button")
+    activate_sound "audio/ui_click.mp3"
 
 style button_text is gui_text:
     properties gui.text_properties("button")
@@ -393,6 +394,10 @@ screen main_menu():
     ## 此语句可确保替换掉任何其他菜单屏幕。
     tag menu
     add gui.main_menu_background
+
+    # ── 调试菜单快捷键（主菜单也可用） ──
+    timer 0.2 action Function(debug_enforce_hp_lock) repeat True
+    key "K_F12" action Show("debug_dev_menu")
 
     vbox:
         xpos 120        # 距左边缘距离

@@ -9,14 +9,15 @@
 ## 行。
 init offset = -2
 
-## 调用 gui.init 会将样式重置为合理的默认值，并设置游戏的宽度和高度（基准分辨
-## 率）。
+## 调用 gui.init 会将样式重置为合理的默认值，并设置游戏的宽度和高度（基准分辨率）。
 init python:
     gui.init(1920, 1080)
 
 ## 启用对屏幕或变换中无效或不稳定属性的检查
 define config.check_conflicting_properties = True
-
+define config.mouse = { }
+define config.mouse['default'] = [ ( "gui/cursor/default.png", 0, 0) ]
+define config.mouse['pressed_button'] = [ ( "gui/cursor/button.png", 0, 0) ]
 
 ################################################################################
 ## GUI 配置变量

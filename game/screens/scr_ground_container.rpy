@@ -191,6 +191,9 @@ init python:
                 player_stats.add_condition(COND_BARE_FOOT)
             else:
                 player_stats.remove_condition(COND_BARE_FOOT)
+        
+        if equip_slot in ("backpack", "waist"):
+            renpy.restart_interaction()
 
 
 screen scr_ground_container(container, player_inv):

@@ -5,8 +5,6 @@
 # =============================================================================
 # ── 动态角色实例类 ──
 init python:
-    import random
-
     # ── NPC 词条稀有度权重表（类似 LOOT_RARITY） ──
     TRAIT_RARITY = {
         "trash":       {"weight": 30, "traits": [TRAIT_WEAK, TRAIT_FRAIL, TRAIT_SLUGGISH, TRAIT_DECAYING]},
@@ -30,7 +28,7 @@ init python:
         
         # 计算总权重（含无词条）
         total = none_weight + sum(candidates.values())
-        roll = random.random() * total
+        roll = renpy.random.random() * total
         
         # 先判断是否无词条
         if roll < none_weight:
@@ -80,11 +78,11 @@ init python:
                 if fatigue_on_spawn is not None:
                     self.fatigue = float(int(fatigue_on_spawn))
                 else:
-                    self.fatigue = random.randint(0, 30)
+                    self.fatigue = renpy.random.randint(0, 30)
             
             # 基础代谢三维初始化
-            self.hunger = random.randint(10, 30) if not is_player else 0.0
-            self.thirst = random.randint(10, 30) if not is_player else 0.0
+            self.hunger = renpy.random.randint(10, 30) if not is_player else 0.0
+            self.thirst = renpy.random.randint(10, 30) if not is_player else 0.0
             self.b_dead = False
             self.skills = []              # 静态持有的特长/技能 ID 列表
             self.active_conditions = []   # 动态状态实例列表
@@ -160,7 +158,7 @@ init python:
     CREATURES_DB[1] = {
         "strName": "野狗",
         "fMaxHP": 30.0,
-        "nTreasureID": 3002,
+        "nTreasureID": LOOT_CANINE,
         "nCorpseID": 0,
         "vAttackModes": [101, 102],  # 撕咬、爪击
         "is_human": False,
@@ -169,7 +167,7 @@ init python:
     CREATURES_DB[2] = {
         "strName": "流浪者",
         "fMaxHP": 50.0,
-        "nTreasureID": 3004,
+        "nTreasureID": LOOT_HUMAN_COMMON,
         "nCorpseID": 0,
         "vAttackModes": [1, 4],  # 徒手攻击、投掷杂物
         "is_human": True,
@@ -178,7 +176,7 @@ init python:
     CREATURES_DB[3] = {
         "strName": "枯萎者",
         "fMaxHP": 35.0,
-        "nTreasureID": 3003,
+        "nTreasureID": LOOT_INFECTED,
         "nCorpseID": 0,
         "vAttackModes": [101],  # 撕咬
         "is_human": False,
@@ -187,7 +185,7 @@ init python:
     CREATURES_DB[4] = {
         "strName": "枯萎兽",
         "fMaxHP": 90.0,
-        "nTreasureID": 3003,
+        "nTreasureID": LOOT_INFECTED_ELITE,
         "nCorpseID": 0,
         "vAttackModes": [101, 102, 103],  # 撕咬、爪击、冲撞
         "is_human": False,
@@ -196,7 +194,7 @@ init python:
     CREATURES_DB[5] = {
         "strName": "辐射鼠",
         "fMaxHP": 8.0,
-        "nTreasureID": 3001,
+        "nTreasureID": LOOT_SMALL_CREATURE,
         "nCorpseID": 0,
         "vAttackModes": [108],  # 啃咬
         "is_human": False,
@@ -205,7 +203,7 @@ init python:
     CREATURES_DB[6] = {
         "strName": "幼芽寄生体",
         "fMaxHP": 25.0,
-        "nTreasureID": 3003,
+        "nTreasureID": LOOT_PARASITE,
         "nCorpseID": 0,
         "vAttackModes": [106],  # 藤蔓抽打
         "is_human": False,
@@ -214,7 +212,7 @@ init python:
     CREATURES_DB[7] = {
         "strName": "辐射蟑螂",
         "fMaxHP": 20.0,
-        "nTreasureID": 3002,
+        "nTreasureID": LOOT_INSECT,
         "nCorpseID": 0,
         "vAttackModes": [101, 104],  # 撕咬、酸液喷射
         "is_human": False,
@@ -223,7 +221,7 @@ init python:
     CREATURES_DB[8] = {
         "strName": "变异吸血虫",
         "fMaxHP": 25.0,
-        "nTreasureID": 3002,
+        "nTreasureID": LOOT_INSECT,
         "nCorpseID": 0,
         "vAttackModes": [105],  # 毒刺穿刺
         "is_human": False,
@@ -232,16 +230,16 @@ init python:
     CREATURES_DB[9] = {
         "strName": "掠夺者",
         "fMaxHP": 80.0,
-        "nTreasureID": 0,
+        "nTreasureID": LOOT_HUMAN_ARMED,
         "nCorpseID": 0,
-        "vAttackModes": [1, 2, 5],  # 徒手、钝器重击、手枪
+        "vAttackModes": [1, 3],  # 徒手、挥刀挥砍
         "is_human": True,
         "escape_rate": 0.3,
     }
     CREATURES_DB[10] = {
         "strName": "变异蜈蚣",
         "fMaxHP": 15.0,
-        "nTreasureID": 3002,
+        "nTreasureID": LOOT_INSECT,
         "nCorpseID": 0,
         "vAttackModes": [101, 105],  # 撕咬、毒刺穿刺
         "is_human": False,
@@ -250,7 +248,7 @@ init python:
     CREATURES_DB[11] = {
         "strName": "军械残兵",
         "fMaxHP": 70.0,
-        "nTreasureID": 0,
+        "nTreasureID": LOOT_HUMAN_ELITE,
         "nCorpseID": 0,
         "vAttackModes": [6, 199, 110],  # 步枪、压制射击、破片手雷
         "is_human": True,
@@ -259,7 +257,7 @@ init python:
     CREATURES_DB[12] = {
         "strName": "蝎尾蝇",
         "fMaxHP": 35.0,
-        "nTreasureID": 3002,
+        "nTreasureID": LOOT_INSECT,
         "nCorpseID": 0,
         "vAttackModes": [105, 111],  # 毒刺穿刺、甩尾
         "is_human": False,
@@ -268,9 +266,9 @@ init python:
     CREATURES_DB[13] = {
         "strName": "拾荒帮众",
         "fMaxHP": 45.0,
-        "nTreasureID": 3004,
+        "nTreasureID": LOOT_HUMAN_COMMON,
         "nCorpseID": 0,
-        "vAttackModes": [1, 3],  # 徒手、砍刀挥砍
+        "vAttackModes": [1, 4],  # 徒手、投掷杂物
         "is_human": True,
         "escape_rate": 0.5,
     }

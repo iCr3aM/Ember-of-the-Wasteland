@@ -8,10 +8,26 @@ image bg lore_blight = "images/lore_blight.png"
 image bg lore_war = "images/lore_war.png"
 image bg quarantine_room = "images/quarantine_room.png"
 image bg blight_radio = "images/blight_radio.png"
+define flash = Fade(0.1, 0.0, 0.5, color="#fff")
+
+# ── 跳过开场动画按钮 ──
+screen skip_prologue_button():
+    zorder 100
+    textbutton "跳过" action Jump("prologue_after_cutscene"):
+        align (1.0, 0.0)
+        offset (-30, 20)
+        text_size 26
+        background "#666666cc"
+        hover_background "#888888cc"
+        padding (10, 4)
 
 label prologue_start:
+    
     # ── 世界观 ──
     scene bg blight_radio with fade
+
+    # ── 显示跳过按钮（右上角），等场景淡入后再平滑出现 ──
+    show screen skip_prologue_button with dissolve
 
     "起初，人们叫它“枯萎病”。"
     "一种通过空气传播的病原体。潜伏期长，致死率极高，基因组极不稳定——它变异的速度，永远快过疫苗研发的进度。"
@@ -24,11 +40,12 @@ label prologue_start:
     scene bg lore_war with fade
 
     "当最后一处安全区被标记在地图上——最后一座疫苗工厂、最后一片无土栽培农场、最后一处未受污染的地下水源——残存的秩序崩解了。"
+    with vpunch
     "没有全面战争。没有宣战声明。只有冷静的、外科手术式的精确打击。几十枚战术核弹头，足够摧毁对方的希望，也足够让放射性同位素飘进全世界的天空。"
     "战争在几周内结束，因为已经没什么值得继续争夺的了。"
 
     # ── 醒来 ──
-    scene bg quarantine_room with fade
+    scene bg quarantine_room with flash
 
     #play sound "audio/"
 
@@ -37,7 +54,11 @@ label prologue_start:
     "这里曾是一间防疫隔离点的地下急救室，一个本该拯救生命的地方。"
     "你撑起上半身，身体只反馈了两件事：剧烈的口渴，喉咙像被砂纸打磨过。"
     "以及，你还活着。"
-    
+
+label prologue_after_cutscene:
+    # ── 隐藏跳过按钮 ──
+    hide screen skip_prologue_button
+
     # ── 移交大地图 ──
     show screen scr_hud
 

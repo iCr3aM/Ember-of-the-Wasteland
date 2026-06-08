@@ -14,6 +14,9 @@ screen scr_map():
     zorder 90
     modal True
 
+    key "K_F12" action Show("debug_dev_menu")
+    timer 0.2 action Function(debug_enforce_hp_lock) repeat True
+    
     # 安全检查 - 使用 screen 语法中的条件显示
     if world_map is None:
         frame:
@@ -65,6 +68,7 @@ screen scr_map():
                                         ysize 60
                                         background Solid(tile_color)
                                         sensitive is_adjacent or (x == player_hex_x and y == player_hex_y)
+                                        activate_sound "audio/map_footstep.mp3"
                                         action If(is_adjacent, [Function(move_player_hex, x, y), Return("moved")], NullAction())
 
                                         if tile:
@@ -120,14 +124,11 @@ screen scr_map():
                     $ current_tile = world_map.grid.get((player_hex_x, player_hex_y)) if world_map else None
                     $ _can_inspect = current_tile is not None and not getattr(current_tile, "inspected", False)
                     $ _has_unsearched = current_tile is not None and has_unsearched_points(current_tile)
-                    $ _in_birth_zone = is_in_birth_protection_zone(player_hex_x, player_hex_y) if current_tile else False
-                    $ _birth_zone_blocked = _in_birth_zone and _starter_loot_claimed
                     $ _inspect_label = "探索区域" if _can_inspect else "继续搜刮" if _has_unsearched else "探索完毕"
 
                     textbutton "[_inspect_label]" :
                         xfill True
-                        # 出生保护区已领礼包 → 不可用；否则按正常逻辑
-                        sensitive current_tile is not None and not _birth_zone_blocked and (_can_inspect or _has_unsearched)
+                        sensitive current_tile is not None and (_can_inspect or _has_unsearched)
                         action Return("inspect")
                     textbutton "查看地面":
                         xfill True

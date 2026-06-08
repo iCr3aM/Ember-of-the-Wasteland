@@ -51,8 +51,6 @@ init python:
                     if (x, y) == (47, 20):  # 流浪商人坐标
                         special = "merchant"
                         merchant_id = "wasteland_trader_01"
-                    if terrain == "lake":
-                        special = "lake_water"  # 湖泊饮水事件
 
                     self.grid[(x, y)] = HexTile(terrain_type=terrain, treasure_id=tid, special_feature=special, merchant_id=merchant_id)          
 
@@ -145,10 +143,9 @@ init python:
         """模拟 NPC 偷窃地面物品：20% 概率随机减少一个堆叠"""
         if tile is None:
             return
-        import random
         non_empty = [i for i, slot in enumerate(tile.ground_container.backpack_slots) if slot is not None]
-        if non_empty and random.random() < 0.2:
-            idx = random.choice(non_empty)
+        if non_empty and renpy.random.random() < 0.2:
+            idx = renpy.random.choice(non_empty)
             slot = tile.ground_container.backpack_slots[idx]
             slot["stack"] -= 1
             if slot["stack"] <= 0:
@@ -223,7 +220,7 @@ init python:
             # 赤脚检查：每走一格判定脚底割伤
             if player_inventory.is_barefoot():
                 player_stats.add_condition(COND_BARE_FOOT)
-                if random.random() < 0.1:  # 10%概率
+                if renpy.random.random() < 0.1:  # 10%概率
                     player_stats.add_condition(COND_CUT_FOOT)
                     renpy.notify("你的脚底不知道被什么东西划伤了！")
             else:
@@ -242,13 +239,8 @@ init python:
 
     def inspect_current_tile():
         """查看当前区域：生成搜刮点"""
-        global _starter_loot_claimed
         tile = get_current_tile()
         if tile is None or getattr(tile, "inspected", False):
-            return False, None
-
-        # ★ 安全检测：出生保护区且已领过礼包 → 不允许查看
-        if is_in_birth_protection_zone(player_hex_x, player_hex_y) and _starter_loot_claimed:
             return False, None
 
         tile.inspected = True
@@ -263,22 +255,13 @@ init python:
         update_hunger_condition(player_stats)
         tick_minutes(player_stats, terrain_cost["minutes"])
 
-        # ★ 出生保护区：生成新手礼包搜刮点（仅一个）
-        if is_in_birth_protection_zone(player_hex_x, player_hex_y) and not _starter_loot_claimed:
-            tile.search_points = [SearchPoint(
-                point_id=SEARCH_POINT_STARTER_PACK,
-                name="旧世界的物资箱",
-                desc="一个布满灰尘的旧世界物资箱，里面似乎装满了物资。",
-            )]
-            adventure_log.append("你在废墟中翻出了一个旧世界的物资箱！")
+        # 普通地形：正常生成搜刮点
+        tile.search_points = generate_search_points(tile.terrain_type)
+        if tile.search_points:
+            point_names = "、".join(p.name for p in tile.search_points)
+            adventure_log.append(f"你仔细观察了周围，发现了几个值得探索的地方：{point_names}")
         else:
-            # 普通地形：正常生成搜刮点
-            tile.search_points = generate_search_points(tile.terrain_type)
-            if tile.search_points:
-                point_names = "、".join(p.name for p in tile.search_points)
-                adventure_log.append(f"你仔细观察了周围，发现了几个值得探索的地方：{point_names}")
-            else:
-                adventure_log.append("你仔细搜索了周围，但什么也没发现。")
+            adventure_log.append("你仔细搜索了周围，但什么也没发现。")
 
         if player_stats.hp <= 0:
             player_stats.b_dead = True

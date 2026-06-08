@@ -273,7 +273,7 @@ init -199 python:
 
     def smoke_cigarette():
         """执行吸烟操作：消耗1支香烟（货币），更新成瘾状态"""
-        global cigarettes_smoked, last_cigarette_hour, game_time
+        global cigarettes_smoked, last_cigarette_hour, last_cigarette_day, game_time
         
         # 检查是否有香烟
         if player_stats.cigarettes < 1:
@@ -284,6 +284,7 @@ init -199 python:
         player_stats.cigarettes -= 1
         cigarettes_smoked += 1
         last_cigarette_hour = game_time['hour']
+        last_cigarette_day = game_time['day']
         
         # 吸烟解除所有戒断状态
         remove_condition_by_id(player_stats, COND_NICOTINE_MILD)

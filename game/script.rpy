@@ -3,35 +3,100 @@
 # 功能：定义 label start 入口、splashscreen 启动画面、调试工具菜单
 # 职责：调用各系统初始化流程，重定向至序幕逻辑；提供开发阶段测试工具
 # =============================================================================
+# ── 调试子页面按钮样式 ──
+style debug_sub_button is button:
+    size_group "debug_sub"
+style debug_sub_button_text is button_text:
+    size 18
+define config.end_splash_transition = dissolve
 # ── 调试工具函数集 ──
 init python:
     # 移除原本映射到游戏菜单的按键（默认包含 'mouseup_3' 即右键）
     config.keymap['game_menu'].remove('mouseup_3')
-    def debug_add_test_items():
-        """将测试物品加入玩家背包。"""
-        player_inventory.add_item_by_id(166)
 
-        player_stats.cigarettes = 9999
-        renpy.notify("已添加测试物品")
+    # ── HP 锁定开关 ──
+    _debug_hp_locked = False
 
-    def debug_skip_to_map():
-        """跳过序幕，直接进入大地图循环。"""
-        global player_hex_x, player_hex_y, last_map_event_code
-        import random
-        player_hex_x, player_hex_y = random.choice(BIRTH_ZONE)  # ← 引用全局变量
-        last_map_event_code = None
-        player_stats.b_dead = False
-        player_stats.hp = player_stats.max_hp
-        player_stats.hunger = 0.0
-        player_stats.thirst = 0.0
-        player_stats.fatigue = 0.0
-        renpy.jump("travel_on_wasteland_loop")
+    def debug_toggle_hp_lock():
+        """切换 HP 锁定状态，锁定后每帧将 HP 重置为 max_hp"""
+        global _debug_hp_locked
+        _debug_hp_locked = not _debug_hp_locked
+        if _debug_hp_locked:
+            player_stats.hp = player_stats.max_hp
+            renpy.notify("HP 锁定已开启")
+        else:
+            renpy.notify("HP 锁定已关闭")
 
-    # ── 独立调试函数：属性快速调整 ──
-    def debug_set_hp_999():
-        """将玩家生命值设为999。"""
-        player_stats.hp = 999.0
-        renpy.notify("生命值已设定为 999")
+    def debug_enforce_hp_lock():
+        """由 screen 定时器每帧调用，维持 HP 锁定（同时锁定三维，防止昏阙/死亡）"""
+        if _debug_hp_locked and player_stats is not None:
+            player_stats.hp = player_stats.max_hp
+            player_stats.b_dead = False
+            # 锁定三维，防止触发昏阙/死亡状态
+            player_stats.hunger = min(player_stats.hunger, 50.0)
+            player_stats.thirst = min(player_stats.thirst, 50.0)
+            player_stats.fatigue = min(player_stats.fatigue, 50.0)
+
+    # ── 装备辅助函数 ──
+    def debug_equip_item(item_id):
+        """创建物品并装备到对应槽位，旧装备自动卸下到背包或地面"""
+        global player_inventory
+
+        # 创建物品实例
+        new_item = create_item_instance(item_id, durability=1.0)
+        if new_item is None:
+            renpy.notify("物品创建失败！")
+            return
+
+        slots = new_item.config.equip_slots
+        if not slots:
+            renpy.notify("该物品不可装备！")
+            return
+
+        slot_name = slots[0]  # 取第一个装备槽
+
+        # 如果该槽已有装备，先卸下
+        if player_inventory.slots.get(slot_name) is not None:
+            old_item = player_inventory.slots[slot_name]
+            # 尝试放入背包
+            if not player_inventory.add_item(old_item):
+                # 背包满 → 放入地面
+                container = get_current_ground_container()
+                if container is not None:
+                    container.add_item(old_item)
+                    renpy.notify(f"{old_item.config.name} 已掉落到地上。")
+                else:
+                    renpy.notify(f"{old_item.config.name} 丢失了！")
+            player_inventory.slots[slot_name] = None
+
+        # 装备新物品
+        player_inventory.slots[slot_name] = new_item
+
+        # 如果是背包/腰带，刷新网格
+        if slot_name in ("backpack", "waist"):
+            player_inventory.refresh_backpack_grid()
+
+        renpy.notify(f"已装备：{new_item.config.name}")
+
+    # ── 状态辅助函数 ──
+    def debug_add_condition(cond_id):
+        """给玩家添加指定状态"""
+        if player_stats is not None:
+            player_stats.add_condition(cond_id)
+            cond_name = CONDITIONS_DB[cond_id].name
+            renpy.notify(f"已添加状态：{cond_name}")
+
+    def debug_remove_condition(cond_id):
+        """移除玩家指定状态"""
+        if player_stats is not None:
+            remove_condition_by_id(player_stats, cond_id)
+            cond_name = CONDITIONS_DB[cond_id].name
+            renpy.notify(f"已移除状态：{cond_name}")
+
+    def debug_set_hp_100():
+        """将玩家生命值设为100（满血）。"""
+        player_stats.hp = 100.0
+        renpy.notify("生命值已恢复至 100")
 
     def debug_clear_hunger():
         """将饥饿值清0。"""
@@ -47,6 +112,316 @@ init python:
         """将疲劳值清0。"""
         player_stats.fatigue = 0.0
         renpy.notify("疲劳值已清空")
+
+    def debug_add_cigarettes():
+        """添加67支香烟到玩家背包。"""
+        player_stats.cigarettes += 67
+        renpy.notify("已添加 67 支香烟")
+
+    def debug_advance_hours(hours):
+        """推进游戏时间 N 小时，并对玩家应用代谢"""
+        global game_time
+        minutes = hours * 60
+        # 推进时间
+        game_time['minute'] += minutes
+        overflow_h = game_time['minute'] // 60
+        game_time['minute'] = game_time['minute'] % 60
+        game_time['hour'] += overflow_h
+        overflow_d = game_time['hour'] // 24
+        game_time['hour'] = game_time['hour'] % 24
+        game_time['day'] += overflow_d
+        # 应用代谢
+        tick_minutes(player_stats, minutes)
+        renpy.notify(f"已推进 {hours} 小时")
+
+# ── 调试菜单界面 ──
+screen debug_dev_menu():
+    modal True
+    tag debug_menu
+    zorder 999
+    frame:
+        background Solid("#111111cc")
+        xysize (460, 420)
+        align (0.5, 0.5)
+        padding (25, 25)
+
+        vbox:
+            spacing 6
+            # ── 标题 ──
+            text "调试工具菜单" size 22 color "#fdd835" xalign 0.5
+            text "在大地图页面按下 F12 可随时打开本界面" size 16 color "#ffffff" xalign 0.5
+
+            null height 20
+
+            # ── 功能按钮 ──
+            hbox:
+                spacing 6
+                xfill True
+
+                # 左列
+                vbox:
+                    xsize 220
+                    spacing 4
+                    textbutton "装备修改器 →":
+                        xfill True
+                        text_size 16
+                        action Show("debug_equip_menu")
+                    textbutton "HP 锁定 [('ON' if _debug_hp_locked else 'OFF')]":
+                        xfill True
+                        text_size 16
+                        action Function(debug_toggle_hp_lock)
+                    textbutton "禁用遭遇战 [('已禁用' if disable_encounters else '已启用')]":
+                        xfill True
+                        text_size 16
+                        action ToggleVariable("disable_encounters")
+                    textbutton "推进 6 小时":
+                        xfill True
+                        text_size 16
+                        action [Hide("debug_dev_menu"), Function(debug_advance_hours, 6)]
+                    textbutton "添加 67 支香烟":
+                        xfill True
+                        text_size 16
+                        action [Hide("debug_dev_menu"), Function(debug_add_cigarettes)]
+
+                # 右列
+                vbox:
+                    xsize 220
+                    spacing 4
+                    textbutton "状态修改器 →":
+                        xfill True
+                        text_size 16
+                        action Show("debug_condition_menu")
+                    textbutton "生命值恢复至 100":
+                        xfill True
+                        text_size 16
+                        action [Hide("debug_dev_menu"), Function(debug_set_hp_100)]
+                    textbutton "饥饿值清0":
+                        xfill True
+                        text_size 16
+                        action [Hide("debug_dev_menu"), Function(debug_clear_hunger)]
+                    textbutton "口渴值清0":
+                        xfill True
+                        text_size 16
+                        action [Hide("debug_dev_menu"), Function(debug_clear_thirst)]
+                    textbutton "疲劳值清0":
+                        xfill True
+                        text_size 16
+                        action [Hide("debug_dev_menu"), Function(debug_clear_fatigue)]
+
+            null height 20
+
+            # ── 底部关闭按钮 ──
+            textbutton "关闭调试菜单":
+                xalign 0.5
+                text_size 22
+                action Hide("debug_dev_menu")
+            key "K_ESCAPE" action Hide("debug_dev_menu")
+            key "K_F12" action Hide("debug_dev_menu")
+
+
+# ── 装备修改器子页面 ──
+screen debug_equip_menu():
+    modal True
+    zorder 1000
+    frame:
+        background Solid("#111111cc")
+        xysize (620, 620)
+        align (0.5, 0.5)
+        padding (20, 20)
+
+        vbox:
+            xalign 0.5
+            spacing 6
+            text "装备修改器" size 22 color "#fdd835" xalign 0.5
+            text "点击装备，旧装备自动卸下到背包或地面" size 14 color "#aaaaaa" xalign 0.5
+
+            null height 4
+
+            # ── 背包类 ──
+            text "【背包】" size 16 color "#66ff66"
+            hbox:
+                style_prefix "debug_sub"
+                spacing 6
+                box_wrap True
+                textbutton "杂物袋(2×2)" action [Function(debug_equip_item, 161), Hide("debug_equip_menu")]
+                textbutton "简易挎包(2×3)" action [Function(debug_equip_item, 165), Hide("debug_equip_menu")]
+                textbutton "褡裢(2×4)" action [Function(debug_equip_item, 166), Hide("debug_equip_menu")]
+                textbutton "登山包(3×3)" action [Function(debug_equip_item, 167), Hide("debug_equip_menu")]
+                textbutton "帆布背包(2×5)" action [Function(debug_equip_item, 168), Hide("debug_equip_menu")]
+                textbutton "猎人背架(3×4)" action [Function(debug_equip_item, 169), Hide("debug_equip_menu")]
+                textbutton "军用突击包(4×4)" action [Function(debug_equip_item, 170), Hide("debug_equip_menu")]
+                textbutton "流浪者大背囊(4×5)" action [Function(debug_equip_item, 171), Hide("debug_equip_menu")]
+                textbutton "商队驮包(5×5)" action [Function(debug_equip_item, 172), Hide("debug_equip_menu")]
+
+            null height 4
+
+            # ── 腰带类 ──
+            text "【腰带】" size 16 color "#66ff66"
+            hbox:
+                style_prefix "debug_sub"
+                spacing 6
+                box_wrap True
+                textbutton "破布条(1×2)" action [Function(debug_equip_item, 160), Hide("debug_equip_menu")]
+                textbutton "简易腰包(1×3)" action [Function(debug_equip_item, 162), Hide("debug_equip_menu")]
+                textbutton "战术腰封(1×4)" action [Function(debug_equip_item, 163), Hide("debug_equip_menu")]
+                textbutton "拾荒者工具带(1×5)" action [Function(debug_equip_item, 164), Hide("debug_equip_menu")]
+
+            null height 4
+
+            # ── 武器类 ──
+            text "【武器】" size 16 color "#66ff66"
+            hbox:
+                style_prefix "debug_sub"
+                spacing 6
+                box_wrap True
+                textbutton "破旧手枪" action [Function(debug_equip_item, 104), Hide("debug_equip_menu")]
+                textbutton "水果刀" action [Function(debug_equip_item, 109), Hide("debug_equip_menu")]
+                textbutton "工具锤" action [Function(debug_equip_item, 110), Hide("debug_equip_menu")]
+                textbutton "撬棍" action [Function(debug_equip_item, 111), Hide("debug_equip_menu")]
+
+            null height 4
+
+            # ── 鞋子类 ──
+            text "【鞋子】" size 16 color "#66ff66"
+            hbox:
+                style_prefix "debug_sub"
+                spacing 6
+                box_wrap True
+                textbutton "破旧军靴(左)" action [Function(debug_equip_item, 102), Hide("debug_equip_menu")]
+                textbutton "破旧军靴(右)" action [Function(debug_equip_item, 119), Hide("debug_equip_menu")]
+                textbutton "肮脏运动鞋(左)" action [Function(debug_equip_item, 108), Hide("debug_equip_menu")]
+
+            null height 4
+
+            # ── 返回按钮 ──
+            textbutton "← 返回上级菜单":
+                xalign 0.5
+                text_size 20
+                action [Hide("debug_equip_menu")]
+            key "K_ESCAPE" action Hide("debug_equip_menu")
+            key "K_F12" action Hide("debug_equip_menu")
+
+# ── 状态修改器子页面 ──
+screen debug_condition_menu():
+    modal True
+    zorder 1000
+    frame:
+        background Solid("#111111cc")
+        xysize (700, 720)
+        align (0.5, 0.5)
+        padding (20, 20)
+
+        vbox:
+            xalign 0.5
+            spacing 4
+            text "状态修改器" size 22 color "#fdd835" xalign 0.5
+            text "点击添加状态到玩家身上，右键/ESC 返回" size 14 color "#aaaaaa" xalign 0.5
+
+            null height 4
+
+            # ── 伤害/减益状态 ──
+            text "【伤害/减益】" size 16 color "#ff8844"
+            hbox:
+                style_prefix "debug_sub"
+                spacing 6
+                box_wrap True
+                textbutton "流血" action [Function(debug_add_condition, COND_BLEED), Hide("debug_condition_menu")]
+                textbutton "中毒" action [Function(debug_add_condition, COND_POISON), Hide("debug_condition_menu")]
+                textbutton "失衡" action [Function(debug_add_condition, COND_STAGGER), Hide("debug_condition_menu")]
+                textbutton "被缠绕" action [Function(debug_add_condition, COND_ENTANGLED), Hide("debug_condition_menu")]
+                textbutton "骨折" action [Function(debug_add_condition, COND_FRACTURE), Hide("debug_condition_menu")]
+                textbutton "内伤" action [Function(debug_add_condition, COND_INTERNAL_INJURY), Hide("debug_condition_menu")]
+
+            null height 4
+
+            # ── 生存状态 ──
+            text "【生存状态】" size 16 color "#ffcc66"
+            hbox:
+                style_prefix "debug_sub"
+                spacing 6
+                box_wrap True
+                textbutton "口渴" action [Function(debug_add_condition, COND_THIRST), Hide("debug_condition_menu")]
+                textbutton "脱水" action [Function(debug_add_condition, COND_DEHYDRATED), Hide("debug_condition_menu")]
+                textbutton "极度脱水" action [Function(debug_add_condition, COND_EXTREME_DEHYDRATED), Hide("debug_condition_menu")]
+                textbutton "器官衰竭" action [Function(debug_add_condition, COND_ORGAN_FAILURE), Hide("debug_condition_menu")]
+                textbutton "饥饿" action [Function(debug_add_condition, COND_HUNGER), Hide("debug_condition_menu")]
+                textbutton "重度饥饿" action [Function(debug_add_condition, COND_SEVERE_HUNGER), Hide("debug_condition_menu")]
+                textbutton "极度饥饿" action [Function(debug_add_condition, COND_EXTREME_HUNGER), Hide("debug_condition_menu")]
+                textbutton "营养不良" action [Function(debug_add_condition, COND_MALNUTRITION), Hide("debug_condition_menu")]
+
+            null height 4
+
+            # ── 疲劳状态 ──
+            text "【疲劳】" size 16 color "#ffcc66"
+            hbox:
+                style_prefix "debug_sub"
+                spacing 6
+                box_wrap True
+                textbutton "疲劳" action [Function(debug_add_condition, COND_FATIGUE), Hide("debug_condition_menu")]
+                textbutton "重度疲劳" action [Function(debug_add_condition, COND_SEVERE_FATIGUE), Hide("debug_condition_menu")]
+                textbutton "睡觉中" action [Function(debug_add_condition, COND_FAINT), Hide("debug_condition_menu")]
+
+            null height 4
+
+            # ── 战斗/脚部状态 ──
+            text "【战斗/脚部】" size 16 color "#ff8844"
+            hbox:
+                style_prefix "debug_sub"
+                spacing 6
+                box_wrap True
+                textbutton "进入掩体" action [Function(debug_add_condition, COND_SHELTER), Hide("debug_condition_menu")]
+                textbutton "摔倒" action [Function(debug_add_condition, COND_PRONE), Hide("debug_condition_menu")]
+                textbutton "濒死" action [Function(debug_add_condition, COND_MORIBUND), Hide("debug_condition_menu")]
+                textbutton "赤脚" action [Function(debug_add_condition, COND_BARE_FOOT), Hide("debug_condition_menu")]
+                textbutton "脚底割伤" action [Function(debug_add_condition, COND_CUT_FOOT), Hide("debug_condition_menu")]
+
+            null height 4
+
+            # ── 成瘾状态 ──
+            text "【成瘾】" size 16 color "#aa66cc"
+            hbox:
+                style_prefix "debug_sub"
+                spacing 6
+                box_wrap True
+                textbutton "尼古丁初瘾" action [Function(debug_add_condition, COND_NICOTINE_MILD), Hide("debug_condition_menu")]
+                textbutton "尼古丁成瘾" action [Function(debug_add_condition, COND_NICOTINE_MODERATE), Hide("debug_condition_menu")]
+                textbutton "尼古丁重瘾" action [Function(debug_add_condition, COND_NICOTINE_SEVERE), Hide("debug_condition_menu")]
+            null height 4
+
+            # ── 敌人词条 ──
+            text "【敌人词条】" size 16 color "#66ff66"
+            hbox:
+                style_prefix "debug_sub"
+                spacing 6
+                box_wrap True
+                textbutton "虚弱" action [Function(debug_add_condition, TRAIT_WEAK), Hide("debug_condition_menu")]
+                textbutton "孱弱" action [Function(debug_add_condition, TRAIT_FRAIL), Hide("debug_condition_menu")]
+                textbutton "迟缓" action [Function(debug_add_condition, TRAIT_SLUGGISH), Hide("debug_condition_menu")]
+                textbutton "衰竭" action [Function(debug_add_condition, TRAIT_DECAYING), Hide("debug_condition_menu")]
+                textbutton "专注" action [Function(debug_add_condition, TRAIT_FOCUSED), Hide("debug_condition_menu")]
+                textbutton "耐渴" action [Function(debug_add_condition, TRAIT_DROUGHT_RESISTANT), Hide("debug_condition_menu")]
+                textbutton "精力充沛" action [Function(debug_add_condition, TRAIT_ENERGETIC), Hide("debug_condition_menu")]
+                textbutton "强硬" action [Function(debug_add_condition, TRAIT_TOUGH), Hide("debug_condition_menu")]
+                textbutton "凶猛" action [Function(debug_add_condition, TRAIT_FEROCIOUS), Hide("debug_condition_menu")]
+                textbutton "彩蛋" action [Function(debug_add_condition, TRAIT_EASTER_EGG), Hide("debug_condition_menu")]
+
+            null height 4
+
+            # ── 清除所有状态 ──
+            textbutton "清除玩家所有状态":
+                xalign 0.5
+                text_size 16
+                action [Function(lambda: player_stats.active_conditions.clear() if player_stats else None), Hide("debug_condition_menu")]
+
+            null height 4
+
+            # ── 返回按钮 ──
+            textbutton "← 返回上级菜单":
+                xalign 0.5
+                text_size 20
+                action Hide("debug_condition_menu")
+            key "K_ESCAPE" action Hide("debug_condition_menu")
+            key "K_F12" action Hide("debug_condition_menu")
 
 # ── 启动画面样式常量 ──
 define splash_title_size = 90   # 工作室名尺寸
@@ -65,13 +440,18 @@ style splash_text:
 
 # ── 启动画面（splashscreen） ──
 label splashscreen:
+    # ── 禁用 ESC 菜单（保存原键位，临时清空） ──
+    python:
+        _saved_game_menu_keys = list(config.keymap['game_menu'])
+        config.keymap['game_menu'] = []
+        renpy.clear_keymap_cache()  # ← 刷新键位缓存，使修改立即生效
 
     # 提前播放主菜单音乐（循环播放，淡入1秒）
     play music "bgm_menu.mp3" fadein 1.0
 
     # 先清空画面，设为黑色背景
     scene black
-    with Pause(0.5)
+    with Pause(0.2)
 
     # ── 工作室名称（大号字，居中） ──
     show text "{size=[splash_title_size]}Cr3aM Studio{/size}" at truecenter with dissolve
@@ -88,83 +468,14 @@ label splashscreen:
     # 回到纯黑色背景
     scene black
     with Pause(0.2)
+
+    # ── 恢复 ESC 菜单键位 ──
+    python:
+        config.keymap['game_menu'] = _saved_game_menu_keys
+        renpy.clear_keymap_cache()  # ← 刷新键位缓存
+        del _saved_game_menu_keys
     
     return
-
-# ── 调试菜单界面 ──
-screen debug_dev_menu():
-    modal True
-    tag debug_menu
-    zorder 999
-    frame:
-        background Solid("#111111cc")
-        xysize (520, 480)
-        align (0.5, 0.3)
-        padding (25, 25)
-
-        vbox:
-            spacing 8
-            # ── 标题（全宽） ──
-            text "调试工具菜单" size 22 color "#fdd835" xalign 0.5
-            text "按下 F12 可随时打开本界面" size 16 color "#ffffff" xalign 0.5
-            
-            null height 8
-
-            # ── 功能按钮：两列 ──
-            hbox:
-                spacing 12
-                xfill True
-                
-                # 左列：场景/状态类
-                vbox:
-                    xsize 220
-                    spacing 6
-                    textbutton "跳过开头，进入大地图":
-                        xfill True
-                        text_size 16
-                        action [Hide("debug_dev_menu"), Function(debug_skip_to_map)]
-                    textbutton "添加测试物品到背包":
-                        xfill True
-                        text_size 16
-                        action [Hide("debug_dev_menu"), Function(debug_add_test_items)]
-                    textbutton "生命值设定为 999":
-                        xfill True
-                        text_size 16
-                        action [Hide("debug_dev_menu"), Function(debug_set_hp_999)]
-                    textbutton "疲劳值清0":
-                        xfill True
-                        text_size 16
-                        action [Hide("debug_dev_menu"), Function(debug_clear_fatigue)]
-                
-                # 右列：系统/属性类
-                vbox:
-                    xsize 220
-                    spacing 6
-                    textbutton "饥饿值清0":
-                        xfill True
-                        text_size 16
-                        action [Hide("debug_dev_menu"), Function(debug_clear_hunger)]
-                    textbutton "口渴值清0":
-                        xfill True
-                        text_size 16
-                        action [Hide("debug_dev_menu"), Function(debug_clear_thirst)]
-                    textbutton "禁用遭遇战 [('开' if disable_encounters else '关')]":
-                        xfill True
-                        text_size 16
-                        action ToggleVariable("disable_encounters")
-            
-            null height 10
-
-            # ── 底部按钮 ──
-            textbutton "关闭调试菜单":
-                xalign 0.5
-                text_size 22
-                action Hide("debug_dev_menu")
-            key "K_ESCAPE" action Hide("debug_dev_menu")
-
-# ── 调试菜单快捷键监听 ──
-screen debug_listener():
-    key "K_F12" action Show("debug_dev_menu")
 
 # ── 游戏主入口 ──
 label start:
@@ -181,8 +492,6 @@ label start:
     python:
         # 激活内核单例
         initialize_game_systems()
-
-    show screen debug_listener
 
     # 平滑跨文件转移至序幕逻辑
     jump prologue_start
