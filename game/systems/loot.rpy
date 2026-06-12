@@ -22,7 +22,7 @@ init python:
             draw_count = renpy.random.randint(1, 3)
             available = dict(TREASURE_DB[treasure_id])  # {item_id: weight}
             
-            for _ in range(min(draw_count, len(available))):
+            for i in range(min(draw_count, len(available))):
                 if not available:
                     break
                 total = sum(available.values())
@@ -79,7 +79,7 @@ init python:
         dropped = []
         available = dict(candidate_items)
 
-        for _ in range(min(draw_count, len(available))):
+        for i in range(min(draw_count, len(available))):
             if not available:
                 break
             total = sum(available.values())

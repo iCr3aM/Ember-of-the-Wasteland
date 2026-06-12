@@ -288,17 +288,17 @@ init python:
     quick_menu = False                     # 让 quick_menu 屏幕不再显示
 
 
-    def auto_save_game():
+    def auto_save_game(force=False):
         """智能自动保存 - 仅在游戏进行中时保存"""
         try:
             # 检查是否在标题菜单（不在标题菜单才保存）
-            if not renpy.context().main_menu:
+            if force or not renpy.context().main_menu:
                 # 使用游戏内存档槽位1作为自动存档
                 renpy.save("auto-1", extra_info=f"自动存档 - 第{game_time.get('day', '?')}天")
         except:
             pass  # 静默失败，不阻塞退出
 
-        config.autosave_callback = auto_save_game
+    config.autosave_callback = auto_save_game
 
 style quick_menu is hbox
 style quick_button is default
@@ -357,7 +357,7 @@ screen navigation():
 
         elif not main_menu:
 
-            textbutton _("标题菜单") action MainMenu()
+            textbutton _("标题菜单") action [Function(auto_save_game, True), MainMenu()]
 
         textbutton _("关于") action ShowMenu("about")
 
@@ -369,7 +369,7 @@ screen navigation():
         if renpy.variant("pc"):
 
             ## 退出按钮在 iOS 上是被禁止使用的，在安卓和网页上也不是必要的。
-            textbutton _("退出") action Quit(confirm=not main_menu)
+            textbutton _("退出") action If(main_menu, Quit(confirm=False), [Function(auto_save_game, True), Quit(confirm=True)])
 
 
 style navigation_button is gui_button

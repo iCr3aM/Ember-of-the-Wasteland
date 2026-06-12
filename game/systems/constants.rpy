@@ -9,6 +9,7 @@ init -200 python:
     # 音乐播放冷却（游戏内分钟数）
     # ═══════════════════════════════════════════
     EXPLORE_MUSIC_COOLDOWN_MINUTES = 30  # 30分钟游戏内时间冷却
+    BACKGROUND_DARKNESS = -0.10  # 战斗和大地图背景亮度压暗幅度，范围 -1 到 1
 
     # 战斗状态
     COND_BLEED = 201                # 流血
@@ -208,6 +209,9 @@ init -200 python:
         "swamp":      [12, 4, 7],
         "ocean":      [],
     }
+
+    # 兜底敌人池
+    FALLBACK_ENEMY_POOL = [1, 2, 3, 5, 6, 7, 8, 10, 12, 13]
 
     EVENT_CONFIG = {
         EVENT_ENCOUNTER_DEFAULT: {
@@ -548,6 +552,7 @@ init -200 python:
             "name": "湖水",
             "desc": "浑浊的湖水泛着诡异的油彩光泽。",
             "event_label": "encounter_lake_water",   # 指向已有的事件标签
+            "icon": "images/search_icons/LAKE_DRINK.png",
         },
         SEARCH_POINT_ABANDONED_BOATHOUSE: {
             "name": "废弃船屋",

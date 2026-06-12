@@ -397,7 +397,7 @@ init python:
             result = []
             for slot in self.backpack_slots:
                 if slot is not None:
-                    for _ in range(slot["stack"]):
+                    for i in range(slot["stack"]):
                         result.append(slot["item"])
             return result
 

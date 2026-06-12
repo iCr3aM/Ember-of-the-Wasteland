@@ -106,6 +106,31 @@ default world_map = WorldMap(
 )
 # ── 地图操作函数 ──
 init python:
+    HEX_DIRECTIONS_ODD_Q = {
+        0: [(1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (0, 1)],
+        1: [(1, 1), (1, 0), (0, -1), (-1, 0), (-1, 1), (0, 1)],
+    }
+
+    def get_hex_neighbors(x, y):
+        """返回 odd-q 平顶六边形坐标系下的六个相邻坐标。"""
+        parity = x & 1
+        return [(x + dx, y + dy) for dx, dy in HEX_DIRECTIONS_ODD_Q[parity]]
+
+    def is_hex_adjacent(from_x, from_y, target_x, target_y):
+        """判断两个地图坐标是否为平顶六边形六方向相邻。"""
+        return (target_x, target_y) in get_hex_neighbors(from_x, from_y)
+
+    def get_random_valid_hex_neighbor(x, y):
+        """从有效地图范围内随机返回一个六边形相邻坐标。"""
+        neighbors = [
+            (nx, ny)
+            for nx, ny in get_hex_neighbors(x, y)
+            if 0 <= nx < map_width and 0 <= ny < map_height
+        ]
+        if not neighbors:
+            return (x, y)
+        return renpy.random.choice(neighbors)
+
     def get_current_tile():
         """获取玩家当前所在格子的 HexTile 对象"""
         if world_map is None:
@@ -153,11 +178,14 @@ init python:
 
     def move_player_hex(target_x, target_y):
         """处理玩家在大地图格子的移动损耗，并联动推动时间与代谢"""
-        global player_hex_x, player_hex_y, game_time, last_map_event_code
+        global player_hex_x, player_hex_y, game_time, last_map_event_code, steps_taken
 
         old_tile = get_current_tile()
 
         if not (0 <= target_x < map_width and 0 <= target_y < map_height):
+            return None
+
+        if not is_hex_adjacent(player_hex_x, player_hex_y, target_x, target_y):
             return None
 
         # 目标格子可通行检查
@@ -192,6 +220,7 @@ init python:
 
         player_hex_x = target_x
         player_hex_y = target_y
+        steps_taken += 1
 
         if not god_mode:
             # 应用地形移动消耗
@@ -213,7 +242,7 @@ init python:
                 if old_tile.ground_last_checked_day is None:
                     old_tile.ground_last_checked_day = game_time["day"]
                 elif game_time["day"] > old_tile.ground_last_checked_day:
-                    for _ in range(game_time["day"] - old_tile.ground_last_checked_day):
+                    for i in range(game_time["day"] - old_tile.ground_last_checked_day):
                         try_steal_ground_container_item(old_tile)
                     old_tile.ground_last_checked_day = game_time["day"]
 

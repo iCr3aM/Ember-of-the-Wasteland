@@ -13,6 +13,54 @@ init -199 python:
             actor.hp = min_hp
         return False
 
+    def advance_game_time(minutes):
+        """推进游戏时间，并统一处理分钟、小时、天数进位。"""
+        global game_time
+        game_time['minute'] += minutes
+        overflow_h = game_time['minute'] // 60
+        game_time['minute'] = game_time['minute'] % 60
+        game_time['hour'] += overflow_h
+        overflow_d = game_time['hour'] // 24
+        game_time['hour'] = game_time['hour'] % 24
+        game_time['day'] += overflow_d
+
+    def darken_background(image_path):
+        """返回统一压暗后的背景图 displayable。"""
+        return Transform(image_path, matrixcolor=BrightnessMatrix(BACKGROUND_DARKNESS))
+
+    def roll_weighted_enemy_for_terrain(terrain_type):
+        """根据地形敌人池和稀有度权重抽取敌人 ID。"""
+        enemy_pool = TERRAIN_ENEMY_MAP.get(terrain_type, FALLBACK_ENEMY_POOL)
+        if not enemy_pool:
+            enemy_pool = FALLBACK_ENEMY_POOL
+
+        candidates = {}
+        for cid in enemy_pool:
+            for rarity, data in ENEMY_RARITY.items():
+                if cid in data["enemies"]:
+                    candidates[cid] = data["weight"]
+                    break
+            else:
+                candidates[cid] = 50
+
+        total = sum(candidates.values())
+        roll = renpy.random.random() * total
+        cumulative = 0
+        selected_id = enemy_pool[0]
+        for cid, weight in candidates.items():
+            cumulative += weight
+            if roll <= cumulative:
+                selected_id = cid
+                break
+        return selected_id
+
+    def create_weighted_enemy_for_current_terrain():
+        """按玩家当前所在地形创建一个加权随机敌人实例。"""
+        tile = world_map.grid.get((player_hex_x, player_hex_y))
+        terrain = tile.terrain_type if tile else "plains"
+        creature_id = roll_weighted_enemy_for_terrain(terrain)
+        return ActorInstance(creature_id=creature_id, is_player=False)
+
     def is_in_active_combat():
         """检查当前是否处于活跃战斗中（安全访问全局变量）"""
         try:
@@ -122,7 +170,7 @@ init -199 python:
         内部自动处理按5分钟步进循环、剩余分钟比例折算和上限保护（100.0）。
         """
         full_cycles = minutes // 5
-        for _ in range(full_cycles):
+        for i in range(full_cycles):
             actor.hunger += METABOLISM_PER_5MIN['hunger'] * hunger_mult
             actor.thirst += METABOLISM_PER_5MIN['thirst'] * thirst_mult
             actor.fatigue += METABOLISM_PER_5MIN['fatigue'] * fatigue_mult

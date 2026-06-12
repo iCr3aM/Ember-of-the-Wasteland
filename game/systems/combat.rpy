@@ -43,6 +43,7 @@ init -180 python:
                 renpy.music.stop(fadeout=1.5)
         
         def restore_music(self):
+            global _last_explore_music_hour, _last_explore_music_day
             if (hasattr(store, '_last_explore_music_hour') and hasattr(store, '_last_explore_music_day') 
                 and _last_explore_music_hour >= 0 and _last_explore_music_day >= 0):
                 hours_passed = (game_time['day'] - _last_explore_music_day) * 24 + (game_time['hour'] - _last_explore_music_hour)
@@ -438,6 +439,10 @@ init -180 python:
                 target.hp -= raw_dmg
                 clamp_hp(target)
                 
+                # 记录玩家承受伤害
+                if not is_player:
+                    store.total_damage_taken += int(raw_dmg)
+                
                 # ── 濒死/死亡状态更新（双方通用） ──
                 if target.hp <= 0:
                     target.active_conditions = []
@@ -478,6 +483,8 @@ init -180 python:
                     if not target.is_player:
                         target.active_conditions = []
                         target.add_condition(COND_DEAD)
+                        if is_player:
+                            store.enemies_killed += 1
                     
                     # 只有敌人死亡时才掉落战利品
                     if is_player:
@@ -744,15 +751,7 @@ init -180 python:
 
         def _advance_one_turn(self):
             """推进一回合（5分钟）的全局时间，并对双方应用基础代谢"""
-            global game_time
-            # 推进5分钟
-            game_time['minute'] += 5
-            overflow = game_time['minute'] // 60
-            game_time['minute'] = game_time['minute'] % 60
-            game_time['hour'] += overflow
-            if game_time['hour'] >= 24:
-                game_time['hour'] = 0
-                game_time['day'] += 1
+            advance_game_time(5)
             
             # 双方应用代谢
             tick_minutes(self.player, 5)

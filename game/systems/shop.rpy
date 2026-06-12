@@ -187,7 +187,7 @@ init python:
                 for item_id in data["items"]:
                     weighted_pool.append((item_id, data["weight"]))
 
-            for _ in range(remaining):
+            for i in range(remaining):
                 if not weighted_pool:
                     break
                 total_weight = sum(w for _, w in weighted_pool)

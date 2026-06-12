@@ -39,18 +39,24 @@ screen scr_search_points(search_points):
                                 padding (10, 10)
                                 action Return(("event", point))
 
-                                vbox:
-                                    text point.name size 20 color "#66ff66"
-                                    text point.desc size 16 color "#aaaaaa"
+                                hbox:
+                                    spacing 10
+                                    add get_search_point_icon_display(point) yalign 0.5
+                                    vbox:
+                                        text point.name size 20 color "#66ff66"
+                                        text point.desc size 16 color "#aaaaaa"
 
                         elif point.searched:
                             frame:
                                 background Solid("#333333")
                                 padding (10, 10)
                                 xfill True
-                                vbox:
-                                    text point.name size 20 color "#888888"
-                                    text point.desc size 16 color "#666666"
+                                hbox:
+                                    spacing 10
+                                    add get_search_point_icon_display(point) yalign 0.5
+                                    vbox:
+                                        text point.name size 20 color "#888888"
+                                        text point.desc size 16 color "#666666"
                         else:
                             $ is_this_selected = (selected_point == point)
                             button:
@@ -61,9 +67,12 @@ screen scr_search_points(search_points):
                                 activate_sound "audio/searching_click.mp3"
                                 action If(is_this_selected, SetScreenVariable("selected_point", None), SetScreenVariable("selected_point", point))
 
-                                vbox:
-                                    text point.name size 20 color ("#ffff88" if is_this_selected else "#ffcc66")
-                                    text point.desc size 16 color ("#cccccc" if is_this_selected else "#aaaaaa")
+                                hbox:
+                                    spacing 10
+                                    add get_search_point_icon_display(point) yalign 0.5
+                                    vbox:
+                                        text point.name size 20 color ("#ffff88" if is_this_selected else "#ffcc66")
+                                        text point.desc size 16 color ("#cccccc" if is_this_selected else "#aaaaaa")
 
             # ── 模式选择区域 ──
             null height 5

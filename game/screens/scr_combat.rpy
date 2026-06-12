@@ -47,7 +47,11 @@ screen scr_combat(combat_instance):
         $ setattr(combat_instance, '_music_faded', True)
 
     modal True
-    add Solid("#102030")
+    key "game_menu" action NullAction()
+    if renpy.loadable("images/bg_combat.png"):
+        add darken_background("images/bg_combat.png") xsize config.screen_width ysize config.screen_height fit "cover"
+    else:
+        add Solid("#102030") xsize config.screen_width ysize config.screen_height
     
     # 顶部双向敌我属性对比横幅
     hbox:

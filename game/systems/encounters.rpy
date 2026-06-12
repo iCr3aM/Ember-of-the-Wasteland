@@ -66,36 +66,7 @@ label drink_lake_water_consequence:
 label event_encounter_default:
 
     python:
-        # 根据当前地形选择敌人
-        _tile = world_map.grid.get((player_hex_x, player_hex_y))
-        _terrain = _tile.terrain_type if _tile else "plains"
-        # 获取当前地形允许的敌人列表
-        _enemy_pool = TERRAIN_ENEMY_MAP.get(_terrain, [])
-        if not _enemy_pool:
-            _enemy_pool = [1, 2, 3, 5, 6, 7, 8, 10, 12, 13]  # 兜底：排除稀有敌人
-        
-        # 按稀有度权重抽取敌人
-        # 1. 收集该地形池中所有敌人及其稀有度权重
-        _candidates = {}  # creature_id -> weight
-        for _cid in _enemy_pool:
-            for _rarity, _data in ENEMY_RARITY.items():
-                if _cid in _data["enemies"]:
-                    _candidates[_cid] = _data["weight"]
-                    break
-            else:
-                _candidates[_cid] = 50  # 未分类的敌人给默认权重
-        
-        # 2. 按权重抽取
-        _total = sum(_candidates.values())
-        _roll = renpy.random.random() * _total
-        _cumulative = 0
-        creature_id = _enemy_pool[0]  # 兜底
-        for _cid, _w in _candidates.items():
-            _cumulative += _w
-            if _roll <= _cumulative:
-                creature_id = _cid
-                break
-        enemy = ActorInstance(creature_id=creature_id, is_player=False)
+        enemy = create_weighted_enemy_for_current_terrain()
         combat_instance = CombatSystem(player_stats, enemy)
         # 在战斗日志中显示敌人名称
         combat_instance.combat_log = [(f"你遇到了一个敌人：{enemy.name}！", "system")]
@@ -113,6 +84,7 @@ label event_encounter_default:
     $ _current_combat_instance = combat_instance
     call screen scr_combat(combat_instance)
     $ _return_value = _return
+    $ combat_instance.restore_music()
     $ _current_combat_instance = None
     $ encounter_result = _return_value
     $ winner = None
@@ -135,6 +107,7 @@ label event_encounter_default:
     else:
         # 玩家失败 — 被敌人杀死
         jump combat_death
+    $ auto_save_game(force=True)
     jump travel_on_wasteland_loop
 
 # ── 死亡标签 ──
@@ -153,6 +126,18 @@ label game_over_death:
     ]
     $ renpy.random.shuffle(death_descriptions)
     "[death_descriptions[0]]"
+    
+    # 淡出到黑屏
+    scene black with dissolve
+    $ renpy.pause(1.0, hard=True)
+    
+    # 显示死亡统计页面
+    call screen scr_death_stats
+    return
+    
+    # 淡出返回主菜单
+    scene black with dissolve
+    $ renpy.pause(0.5, hard=True)
     $ renpy.full_restart()
 
 # ── 战斗死亡标签 ──
@@ -182,6 +167,7 @@ label event_merchant_encounter_menu:
 
 # ── 扎营休息标签 ──
 label event_camp:
+    $ times_camped += 1
     # 防御性死亡检查
     $ check_player_death(player_stats)
     
@@ -213,13 +199,7 @@ label event_camp:
         
         # 步进5分钟并推进游戏时间
         $ step = min(5, remaining_minutes)
-        $ game_time['minute'] += step
-        $ _overflow = game_time['minute'] // 60
-        $ game_time['hour'] += _overflow
-        $ game_time['minute'] = game_time['minute'] % 60
-        if game_time['hour'] >= 24:
-            $ game_time['hour'] = 0
-            $ game_time['day'] += 1
+        $ advance_game_time(step)
         
         # 应用基础代谢（饥饿、口渴、疲劳增加）
         $ tick_minutes(player_stats, step, thirst_multiplier=CAMP_CONFIG['thirst_rate_multiplier'])
@@ -282,6 +262,7 @@ label event_camp:
         if player_stats.fatigue <= 0:
             "你精神饱满，又可以继续前进了。"
         
+        $ auto_save_game(force=True)
         $ renpy.restart_interaction()
         
         jump travel_on_wasteland_loop
@@ -312,16 +293,11 @@ label event_faint_collapse:
     $ player_stats.hp = min(player_stats.max_hp, player_stats.hp + faint_hp_recovery * faint_hp_mult)
 
     # 同时推进时间
-    $ game_time['minute'] += faint_sleep_minutes
-    $ _overflow = game_time['minute'] // 60
-    $ game_time['hour'] += _overflow
-    $ game_time['minute'] = game_time['minute'] % 60
-    if game_time['hour'] >= 24:
-        $ game_time['hour'] = 0
-        $ game_time['day'] += 1
+    $ advance_game_time(faint_sleep_minutes)
     
     "……不知过了多久，你在一阵刺骨的寒冷中醒来。"
     "阳光已经移动了位置——你睡了很久。"
     
     # 回到大地图
+    $ auto_save_game(force=True)
     jump travel_on_wasteland_loop

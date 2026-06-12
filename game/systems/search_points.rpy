@@ -6,13 +6,14 @@
 init python:
     class SearchPoint:
         """一个具体的搜刮点实例"""
-        def __init__(self, point_id, name, desc, loot_table_id=None, event_label=None):
+        def __init__(self, point_id, name, desc, loot_table_id=None, event_label=None, icon=None):
             self.point_id = point_id          # 对应 TREASURE_DB 中的 ID
             self.name = name
             self.desc = desc
             self.loot_table_id = loot_table_id   # 普通搜刮点：对应 TREASURE_DB 的 ID
             self.event_label = event_label       # 事件搜刮点：对应 Ren'Py label 名
             self.searched = False             # 是否已被搜刮
+            self.icon = icon                  # 图标路径或 displayable
 
     def generate_search_points(terrain_type):
         """根据地形类型随机生成搜刮点列表"""
@@ -43,6 +44,7 @@ init python:
                 desc=info["desc"],
                 loot_table_id=point_id if point_id != SEARCH_POINT_LAKE_DRINK else None,
                 event_label=info.get("event_label", None),
+                icon=info.get("icon"),
             ))
         return points
 
@@ -123,3 +125,26 @@ init python:
         
         # 返回分开的文本列表，每项独立一页
         return [prefix, base]
+
+    def get_search_point_icon_display(point):
+        """返回搜刮点的图标 displayable（优先加载图片，否则用彩色占位符）"""
+        if point.icon and renpy.loadable(point.icon):
+            return Transform(point.icon, xysize=(64, 64))
+        # 占位符：根据 point_id 生成固定颜色
+        colors = [
+            "#cc6644", "#44aa66", "#4488cc", "#cc8844",
+            "#aa44cc", "#44ccaa", "#cc4466", "#66aacc",
+        ]
+        color = colors[point.point_id % len(colors)]
+        return Fixed(
+            Solid(color, xysize=(64, 64)),
+            Text(
+                str(point.point_id),
+                size=20,
+                color="#ffffff",
+                outlines=[(1, "#000000", 0, 0)],
+                xalign=0.5,
+                yalign=0.5,
+            ),
+            xysize=(64, 64),
+        )

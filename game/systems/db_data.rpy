@@ -33,7 +33,11 @@ default cigarettes_smoked = 0            # 累计吸烟支数
 default last_cigarette_hour = -1         # 上次吸烟的游戏小时数（-1 表示从未吸烟）
 default last_cigarette_day = -1 
 default _last_explore_music_hour = -1
-default _last_explore_music_day = -1  
+default _last_explore_music_day = -1
+default steps_taken = 0                # 累计移动格数
+default enemies_killed = 0             # 累计击杀敌人数
+default times_camped = 0               # 累计扎营次数
+default total_damage_taken = 0         # 累计承受伤害
 
 # ── 工具函数：图标/头像路径解析 ──
 init python:

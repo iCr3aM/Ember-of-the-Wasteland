@@ -120,16 +120,9 @@ init python:
 
     def debug_advance_hours(hours):
         """推进游戏时间 N 小时，并对玩家应用代谢"""
-        global game_time
         minutes = hours * 60
         # 推进时间
-        game_time['minute'] += minutes
-        overflow_h = game_time['minute'] // 60
-        game_time['minute'] = game_time['minute'] % 60
-        game_time['hour'] += overflow_h
-        overflow_d = game_time['hour'] // 24
-        game_time['hour'] = game_time['hour'] % 24
-        game_time['day'] += overflow_d
+        advance_game_time(minutes)
         # 应用代谢
         tick_minutes(player_stats, minutes)
         renpy.notify(f"已推进 {hours} 小时")
@@ -483,7 +476,7 @@ label start:
     stop music fadeout 1.5
     
     # 等待淡出完成（可选：如果希望淡出完毕后文字才开始显示）
-    $ renpy.pause(1.0, hard=True)
+    $ renpy.pause(0.5, hard=True)
 
     # 如果此时音乐未在播放（从 splashscreen 进入时已在播，从其他地方进入可能没有）
     if not renpy.music.is_playing():

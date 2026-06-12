@@ -3,7 +3,7 @@
 # 功能：定义大地图探索循环、移动/搜刮/交易/扎营指令分发
 # 职责：接收 scr_map 的 Return 值，分发至各系统标签处理
 # =============================================================================
-image bg bg_travel = "images/bg_travel.png"
+image bg bg_travel = darken_background("images/bg_travel.png")
 
 # ── 大地图主循环 ──
 label travel_on_wasteland_loop:
@@ -33,20 +33,16 @@ label travel_on_wasteland_loop:
     if player_stats.fatigue >= 100.0:
         python:
             steps = renpy.random.randint(1, 3)
-            directions = [(0, 1), (0, -1), (1, 0), (-1, 0), (1, 1), (-1, -1), (1, -1), (-1, 1)]
-            for _ in range(steps):
-                dx, dy = renpy.random.choice(directions)
-                new_x = player_hex_x + dx
-                new_y = player_hex_y + dy
-                if 0 <= new_x < map_width and 0 <= new_y < map_height:
-                    player_hex_x = new_x
-                    player_hex_y = new_y
+            for i in range(steps):
+                player_hex_x, player_hex_y = get_random_valid_hex_neighbor(player_hex_x, player_hex_y)
         jump event_faint_collapse
 
     # 呼叫大地图 UI，等待玩家操作后 Return
     call screen scr_map
     
     $ action_result = _return
+    if action_result == "moved":
+        $ auto_save_game(force=True)
 
     # ── 指令分发器 ──
     if action_result == "moved":
@@ -58,23 +54,15 @@ label travel_on_wasteland_loop:
         if fainted:
             python:
                 steps = renpy.random.randint(1, 3)
-                directions = [(0, 1), (0, -1), (1, 0), (-1, 0), (1, 1), (-1, -1), (1, -1), (-1, 1)]
-                for _ in range(steps):
-                    dx, dy = renpy.random.choice(directions)
-                    new_x = player_hex_x + dx
-                    new_y = player_hex_y + dy
-                    if 0 <= new_x < map_width and 0 <= new_y < map_height:
-                        player_hex_x = new_x
-                        player_hex_y = new_y
+                for i in range(steps):
+                    player_hex_x, player_hex_y = get_random_valid_hex_neighbor(player_hex_x, player_hex_y)
             jump event_faint_collapse
         # 特殊地块事件
         elif current_tile and current_tile.special_feature == "merchant":
-            "你来到了一个商人的摊点前。"
             jump travel_on_wasteland_loop
         elif last_map_event_code and last_map_event_code in EVENT_LABEL_MAP:
             jump expression EVENT_LABEL_MAP[last_map_event_code]
         else:
-            "你继续前进到邻近的废土格子。"
             jump travel_on_wasteland_loop
 
     elif action_result == "inspect":
@@ -108,6 +96,7 @@ label travel_on_wasteland_loop:
             $ fainted = check_and_trigger_faint_travel(player_stats)
             if fainted:
                 jump event_faint_collapse
+            $ auto_save_game(force=True)
             $ _points = get_current_tile().search_points if hasattr(get_current_tile(), 'search_points') else []
             if _points:
                 call screen scr_search_points(_points)
@@ -119,6 +108,7 @@ label travel_on_wasteland_loop:
             if isinstance(_search_result, (list, tuple)) and len(_search_result) >= 2:
                 if _search_result[0] == "event":
                     $ _clicked_point = _search_result[1]
+                    $ auto_save_game(force=True)
                     jump expression _clicked_point.event_label
                     
                 elif _search_result[0] == "execute_search":       # ← 直接处理，不再经过 select_mode
@@ -139,13 +129,7 @@ label travel_on_wasteland_loop:
                         _actual_minutes = int(_base_minutes * _mode_cfg["time_multiplier"])
                         
                         # 推进时间
-                        game_time['minute'] += _actual_minutes
-                        while game_time['minute'] >= 60:
-                            game_time['minute'] -= 60
-                            game_time['hour'] += 1
-                            if game_time['hour'] >= 24:
-                                game_time['hour'] = 0
-                                game_time['day'] += 1
+                        advance_game_time(_actual_minutes)
                         
                         # 应用三维消耗
                         _hunger_cost = _terrain_cost["hunger"] * _mode_cfg["time_multiplier"]
@@ -170,30 +154,7 @@ label travel_on_wasteland_loop:
                     
                     if _encounter_triggered:
                         python:
-                            # 生成敌人
-                            _tile = world_map.grid.get((player_hex_x, player_hex_y))
-                            _terrain = _tile.terrain_type if _tile else "plains"
-                            _enemy_pool = TERRAIN_ENEMY_MAP.get(_terrain, [1, 2, 3, 5, 6, 7, 8, 10, 12, 13])
-                            if not _enemy_pool:
-                                _enemy_pool = [1, 2, 3, 5, 6, 7, 8, 10, 12, 13]
-                            _candidates = {}
-                            for _cid in _enemy_pool:
-                                for _rarity, _data in ENEMY_RARITY.items():
-                                    if _cid in _data["enemies"]:
-                                        _candidates[_cid] = _data["weight"]
-                                        break
-                                else:
-                                    _candidates[_cid] = 50
-                            _total = sum(_candidates.values())
-                            _roll = renpy.random.random() * _total
-                            _cumulative = 0
-                            _creature_id = _enemy_pool[0]
-                            for _cid, _w in _candidates.items():
-                                _cumulative += _w
-                                if _roll <= _cumulative:
-                                    _creature_id = _cid
-                                    break
-                            _enemy = ActorInstance(creature_id=_creature_id, is_player=False)
+                            _enemy = create_weighted_enemy_for_current_terrain()
                             # 获取遇敌描述
                             _encounter_desc = get_encounter_description(_enemy, _mode)
                         
@@ -205,6 +166,7 @@ label travel_on_wasteland_loop:
                         $ _current_combat_instance.combat_log = [(f"战斗开始！你遭遇了【{_enemy.name}】", "system")]
                         call screen scr_combat(_current_combat_instance)
                         $ _return_value = _return
+                        $ _current_combat_instance.restore_music()
                         $ _current_combat_instance = None
                         $ encounter_result = _return_value
                         $ winner = None
@@ -219,6 +181,7 @@ label travel_on_wasteland_loop:
                             "敌人仓皇逃窜，消失在了荒野之中。"
                         else:
                             jump combat_death
+                        $ auto_save_game(force=True)
                     else:
                         # 无遇敌，显示结束描述
                         python:
@@ -232,6 +195,7 @@ label travel_on_wasteland_loop:
                                         break
                             _action_text, _end_text = get_search_action_text(_mode, has_loot=_has_loot)
                         "[_end_text]"
+                        $ auto_save_game(force=True)
 
             if _event_code and _event_code in EVENT_LABEL_MAP:
                 $ renpy.jump(EVENT_LABEL_MAP[_event_code])
@@ -257,6 +221,7 @@ label travel_on_wasteland_loop:
             merchant_name=merchant_cfg.name
         )
         "交易完毕，你清点了一下背包，整理好行囊，准备继续踏上废土之旅。"
+        $ auto_save_game(force=True)
         jump travel_on_wasteland_loop
 
     elif action_result == "camp":
