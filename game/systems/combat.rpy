@@ -492,15 +492,12 @@ init -180 python:
                             target.treasure_id,
                             overall_chance=LOOT_OVERALL_CHANCE
                         )
-                        self.corpse_searched = False
+                        self.corpse_searched = not bool(self.loot_drops)
                         self.corpse_container = get_current_ground_container()
-                        if self.corpse_container is not None:
-                            for item in self.loot_drops:
-                                self.corpse_container.add_item(item)
+                        if self.loot_drops:
                             self._log("你可以搜刮敌人的尸体，获得战利品。", "system")
                         else:
-                            # 没有地面容器时，战利品留在 loot_drops 中，由 search_corpse 处理
-                            self._log("敌人的尸体掉落了战利品。", "system")
+                            self._log("敌人的尸体上似乎没有什么值钱的东西。", "system")
                     else:
                         # 玩家死亡，没有战利品掉落
                         self._log(f"{target.name} 已经倒在了废土血泊中。", "enemy" if is_player else "player")
@@ -727,27 +724,77 @@ init -180 python:
             global player_inventory
             if not self.is_finished or self.winner != self.player or self.corpse_searched:
                 return
-            self.corpse_searched = True
-
-            if self.corpse_container is not None and self.loot_drops:
-                # 从地面容器移到玩家背包
-                for item in list(self.loot_drops):
-                    if self.corpse_container.remove_item(item):
-                        player_inventory.add_item(item)
-                item_names = "、".join(item.config.name for item in self.loot_drops)
-                self._log(f"你从尸体上搜刮到了：{item_names}。", "player")
-                self.loot_drops = []
+            if not self.loot_drops:
+                self.corpse_searched = True
+                self._log("你搜刮了尸体，没有找到任何有用的东西。", "system")
                 return
 
-            if self.loot_drops:
-                # 没有地面容器时，直接从 loot_drops 加入背包
-                item_names = "、".join(item.config.name for item in self.loot_drops)
-                for item in self.loot_drops:
-                    player_inventory.add_item(item)
+            picked_up_items = []
+            remaining_items = []
+            dropped_to_ground = []
+            still_unclaimed = []
+
+            for item in list(self.loot_drops):
+                if player_inventory.add_item(item):
+                    picked_up_items.append(item)
+                else:
+                    remaining_items.append(item)
+
+            if picked_up_items:
+                item_names = "、".join(item.config.name for item in picked_up_items)
                 self._log(f"你从尸体上搜刮到了：{item_names}。", "player")
-                self.loot_drops = []
+
+            if remaining_items:
+                if self.corpse_container is not None:
+                    for item in remaining_items:
+                        if self.corpse_container.add_item(item):
+                            dropped_to_ground.append(item)
+                        else:
+                            still_unclaimed.append(item)
+                else:
+                    still_unclaimed = list(remaining_items)
+
+                if dropped_to_ground:
+                    ground_names = "、".join(item.config.name for item in dropped_to_ground)
+                    self._log(f"剩下的战利品掉在了地上：{ground_names}。", "system")
+
+                if still_unclaimed:
+                    self.loot_drops = still_unclaimed
+                    self.corpse_searched = False
+                    self._log("你的背包放不下剩下的战利品了。", "system")
+                else:
+                    self.loot_drops = []
+                    self.corpse_searched = True
             else:
-                self._log("你搜刮了尸体，没有找到任何有用的东西。", "system")
+                self.loot_drops = []
+                self.corpse_searched = True
+                if not picked_up_items:
+                    self._log("你搜刮了尸体，没有找到任何有用的东西。", "system")
+
+        def finalize_corpse_loot(self):
+            """离开战斗界面前，尽量将未处理战利品落到地面，成功后返回结算值。"""
+            if self.winner != self.player or not self.loot_drops:
+                return ["combat_end_trigger", self.winner]
+
+            if self.corpse_container is None:
+                self.corpse_container = get_current_ground_container()
+
+            if self.corpse_container is None:
+                renpy.notify("还有未处理的战利品，无法直接离开战场。")
+                return None
+
+            remaining_items = []
+            for item in self.loot_drops:
+                if not self.corpse_container.add_item(item):
+                    remaining_items.append(item)
+
+            self.loot_drops = remaining_items
+            if not self.loot_drops:
+                self.corpse_searched = True
+                return ["combat_end_trigger", self.winner]
+
+            renpy.notify("地面已满，还有未处理的战利品。")
+            return None
 
         def _advance_one_turn(self):
             """推进一回合（5分钟）的全局时间，并对双方应用基础代谢"""

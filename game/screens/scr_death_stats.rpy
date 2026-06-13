@@ -9,7 +9,7 @@ screen scr_death_stats():
     zorder 1000
     tag death_stats
 
-    add Solid("#0f0f0f")
+    add "images/bg_death_screen.png"
 
     frame:
         xalign 0.5
@@ -118,10 +118,6 @@ screen scr_death_stats():
                 ysize 60
                 background Solid("#556677")
                 hover_background Solid("#778899")
-                action [
-                    Hide("scr_death_stats"),
-                    With(dissolve),
-                    Function(renpy.full_restart)
-                ]
+                action Return()
 
                 text "返回主菜单" align (0.5, 0.5) size 24 color "#ffffff"

@@ -3,11 +3,13 @@
 # 功能：定义大地图探索循环、移动/搜刮/交易/扎营指令分发
 # 职责：接收 scr_map 的 Return 值，分发至各系统标签处理
 # =============================================================================
-image bg bg_travel = darken_background("images/bg_travel.png")
+image bg bg_travel = "images/bg_travel.png"
+image bg_travel_darken = Solid("#00000022")
 
 # ── 大地图主循环 ──
 label travel_on_wasteland_loop:
     scene bg_travel
+    show bg_travel_darken
     # 使用游戏内时间控制音乐冷却
     if not renpy.music.get_playing(channel="music"):
         $ _music_cooldown_passed = True
@@ -189,10 +191,8 @@ label travel_on_wasteland_loop:
                             _tile = get_current_tile()
                             _has_loot = False
                             if _tile:
-                                for _slot in _tile.ground_container.backpack_slots:
-                                    if _slot is not None:
-                                        _has_loot = True
-                                        break
+                                _tile.ground_container._ensure_grid_state()
+                                _has_loot = bool(_tile.ground_container.grid_items)
                             _action_text, _end_text = get_search_action_text(_mode, has_loot=_has_loot)
                         "[_end_text]"
                         $ auto_save_game(force=True)
@@ -212,13 +212,19 @@ label travel_on_wasteland_loop:
 
         "商人上下打量了你一眼，将手里攥着的防身刀往怀里收了收。"
         # 打开交易界面
-        call screen scr_shop(
+        call screen scr_unified_inventory(
+            equipment_slots=player_inventory.slots,
             player_inv=player_inventory,
-            merchant_inv=merchant_inv,
-            shop_type=merchant_cfg.shop_type,
-            barter_rate=1.0,
+            secondary_inv=merchant_inv,
+            screen_title="背包 / 交易",
+            secondary_title="商人货架",
+            mode="shop",
+            close_mode="return",
+            merchant_name=merchant_cfg.name,
             merchant_avatar=merchant_cfg.avatar_path,
-            merchant_name=merchant_cfg.name
+            merchant_description=merchant_cfg.description,
+            shop_type=merchant_cfg.shop_type,
+            barter_rate=1.0
         )
         "交易完毕，你清点了一下背包，整理好行囊，准备继续踏上废土之旅。"
         $ auto_save_game(force=True)

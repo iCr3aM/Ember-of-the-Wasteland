@@ -24,9 +24,25 @@ init -199 python:
         game_time['hour'] = game_time['hour'] % 24
         game_time['day'] += overflow_d
 
-    def darken_background(image_path):
-        """返回统一压暗后的背景图 displayable。"""
-        return Transform(image_path, matrixcolor=BrightnessMatrix(BACKGROUND_DARKNESS))
+    def hide_gameplay_overlays():
+        """隐藏死亡和主菜单切换前不应残留的游戏内悬浮界面。"""
+        for screen_name in (
+            "scr_hud",
+            "scr_map",
+            "scr_combat",
+            "scr_search_points",
+            "scr_shop",
+            "scr_inventory",
+            "scr_ground_container",
+            "scr_unified_inventory",
+            "tooltip_delay_timer",
+            "floating_tooltip",
+            "debug_dev_menu",
+            "debug_equip_menu",
+            "debug_condition_menu",
+        ):
+            renpy.hide_screen(screen_name)
+        renpy.restart_interaction()
 
     def roll_weighted_enemy_for_terrain(terrain_type):
         """根据地形敌人池和稀有度权重抽取敌人 ID。"""

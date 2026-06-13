@@ -113,6 +113,9 @@ label event_encounter_default:
 # ── 死亡标签 ──
 label game_over_death:
     $ player_stats.b_dead = False
+    $ hide_gameplay_overlays()
+    scene black with dissolve
+    $ renpy.pause(0.3, hard=True)
     $ death_descriptions = [
         "你感受到自己的意识逐渐模糊……\n身体像被抽空了一样，四肢再也无法支撑你的重量……",
         "视野的边缘开始发黑，像墨水在宣纸上缓慢洇开。\n你听见自己的心跳越来越慢，最终归于沉寂。",
@@ -133,12 +136,11 @@ label game_over_death:
     
     # 显示死亡统计页面
     call screen scr_death_stats
-    return
-    
+
     # 淡出返回主菜单
     scene black with dissolve
     $ renpy.pause(0.5, hard=True)
-    $ renpy.full_restart()
+    $ MainMenu(confirm=False, save=False)()
 
 # ── 战斗死亡标签 ──
 label combat_death:

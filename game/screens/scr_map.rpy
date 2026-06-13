@@ -77,6 +77,16 @@ screen scr_map():
     modal True
 
     key "K_F12" action Show("debug_dev_menu")
+    key "i" action Show(
+        "scr_unified_inventory",
+        equipment_slots=player_inventory.slots,
+        player_inv=player_inventory,
+        secondary_inv=get_current_ground_container() if get_current_ground_container() is not None else Inventory(max_slots=0),
+        screen_title="背包 / 地面",
+        secondary_title="地面",
+        mode="ground",
+        close_mode="hide"
+    )
     timer 0.2 action Function(debug_enforce_hp_lock) repeat True
     
     # 安全检查 - 使用 screen 语法中的条件显示
@@ -210,7 +220,7 @@ screen scr_map():
                                     for entry in reversed(adventure_log[-8:]):
                                         text "[entry]" size 16 color "#aaaaaa"
             frame:
-                xsize 200
+                xsize 190
                 ysize 900
                 background Solid("#000000cc")
                 padding (20, 20)
@@ -227,11 +237,18 @@ screen scr_map():
                         xfill True
                         sensitive current_tile is not None and (_can_inspect or _has_unsearched)
                         action Return("inspect")
-                    textbutton "查看地面":
+                    textbutton "装备拾取":
                         xfill True
-                        sensitive current_tile is not None
-                        action Show("scr_ground_container", container=current_tile.ground_container, player_inv=player_inventory)
-                    textbutton "打开背包" action Show("scr_inventory", inv_instance=player_inventory) xfill True
+                        action Show(
+                            "scr_unified_inventory",
+                            equipment_slots=player_inventory.slots,
+                            player_inv=player_inventory,
+                            secondary_inv=current_tile.ground_container if current_tile is not None else Inventory(max_slots=0),
+                            screen_title="背包/地面",
+                            secondary_title="地面",
+                            mode="ground",
+                            close_mode="hide"
+                        )
                     textbutton "扎营休息" action Return("camp") xfill True
                     
                     # 如果当前位置是商人地块，显示“进行交易”按钮

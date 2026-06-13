@@ -11,6 +11,17 @@ style debug_sub_button_text is button_text:
 define config.end_splash_transition = dissolve
 # ── 调试工具函数集 ──
 init python:
+
+    # CRT显示
+    def append_boot(text):
+        store.boot_log += text + "\n"
+        renpy.restart_interaction()
+
+    def append_status(status):
+        store.boot_log = store.boot_log.rstrip("\n")
+        store.boot_log += status + "\n"
+        renpy.restart_interaction()
+
     # 移除原本映射到游戏菜单的按键（默认包含 'mouseup_3' 即右键）
     config.keymap['game_menu'].remove('mouseup_3')
 
@@ -237,14 +248,14 @@ screen debug_equip_menu():
                 spacing 6
                 box_wrap True
                 textbutton "杂物袋(2×2)" action [Function(debug_equip_item, 161), Hide("debug_equip_menu")]
-                textbutton "简易挎包(2×3)" action [Function(debug_equip_item, 165), Hide("debug_equip_menu")]
-                textbutton "褡裢(2×4)" action [Function(debug_equip_item, 166), Hide("debug_equip_menu")]
+                textbutton "简易挎包(3×2)" action [Function(debug_equip_item, 165), Hide("debug_equip_menu")]
+                textbutton "褡裢(4×2)" action [Function(debug_equip_item, 166), Hide("debug_equip_menu")]
                 textbutton "登山包(3×3)" action [Function(debug_equip_item, 167), Hide("debug_equip_menu")]
-                textbutton "帆布背包(2×5)" action [Function(debug_equip_item, 168), Hide("debug_equip_menu")]
-                textbutton "猎人背架(3×4)" action [Function(debug_equip_item, 169), Hide("debug_equip_menu")]
-                textbutton "军用突击包(4×4)" action [Function(debug_equip_item, 170), Hide("debug_equip_menu")]
-                textbutton "流浪者大背囊(4×5)" action [Function(debug_equip_item, 171), Hide("debug_equip_menu")]
-                textbutton "商队驮包(5×5)" action [Function(debug_equip_item, 172), Hide("debug_equip_menu")]
+                textbutton "帆布背包(5×3)" action [Function(debug_equip_item, 168), Hide("debug_equip_menu")]
+                textbutton "猎人背架(4×4)" action [Function(debug_equip_item, 169), Hide("debug_equip_menu")]
+                textbutton "军用突击包(5×4)" action [Function(debug_equip_item, 170), Hide("debug_equip_menu")]
+                textbutton "流浪者大背囊(5×5)" action [Function(debug_equip_item, 171), Hide("debug_equip_menu")]
+                textbutton "商队驮包(5×6)" action [Function(debug_equip_item, 172), Hide("debug_equip_menu")]
 
             null height 4
 
@@ -439,12 +450,103 @@ label splashscreen:
         config.keymap['game_menu'] = []
         renpy.clear_keymap_cache()  # ← 刷新键位缓存，使修改立即生效
 
-    # 提前播放主菜单音乐（循环播放，淡入1秒）
-    play music "bgm_menu.mp3" fadein 1.0
+    show screen crt_overlay
 
-    # 先清空画面，设为黑色背景
+    scene flash_white
+    with Dissolve(0.02)
+
     scene black
-    with Pause(0.2)
+    with Dissolve(0.03)
+
+    show screen boot_terminal
+
+    $ boot_log = ""
+
+    $ append_boot("===================================")
+    $ append_boot("         WASTELAND TERMINAL")
+    $ append_boot("          BIOS VERSION 2.4")
+    $ append_boot("       COPYRIGHT (C) UNKNOWN")
+    $ append_boot("===================================")
+
+    $ renpy.pause(0.8, hard=True)
+
+    $ append_boot("")
+    $ append_boot("      BOOT SEQUENCE INITIATED")
+
+    $ renpy.pause(0.5, hard=True)
+
+    $ append_boot("")
+    $ append_boot("CPU MODULE.....................")
+
+    $ renpy.pause(0.2, hard=True)
+
+    $ append_status("ONLINE")
+    $ renpy.play("audio/splashscreen_beep.mp3") 
+
+    $ renpy.pause(0.3, hard=True)
+
+    $ append_boot("MEMORY BANK.....................")
+
+    $ renpy.pause(0.2, hard=True)
+
+    $ append_status("64 KB")
+
+    $ renpy.pause(0.3, hard=True)
+
+    $ append_boot("CACHE BUFFER....................")
+
+    $ renpy.pause(0.2, hard=True)
+
+    $ append_status("16 KB")
+
+    $ renpy.pause(0.3, hard=True)
+
+    $ append_boot("SELF TEST........................")
+
+    $ renpy.pause(0.3, hard=True)
+
+    $ append_status("PASS")
+    $ renpy.play("audio/splashscreen_beep.mp3") 
+
+    $ renpy.pause(0.3, hard=True)
+
+    $ append_boot("STORAGE DEVICE..................")
+
+    $ renpy.pause(0.3, hard=True)
+
+    $ append_status("FOUND")
+    $ renpy.play("audio/splashscreen_beep.mp3") 
+
+    $ renpy.pause(0.3, hard=True)
+
+    $ append_boot("ARCHIVE DATABASE................")
+
+    $ renpy.pause(0.3, hard=True)
+
+    $ append_status("READY")
+    $ renpy.play("audio/splashscreen_beep.mp3") 
+
+    $ renpy.pause(0.3, hard=True)
+
+    $ append_boot("")
+
+    $ append_boot("      BOOT SEQUENCE COMPLETE")
+
+    $ renpy.pause(1.2, hard=True)
+
+    hide screen boot_terminal
+
+    scene flash_white
+    with Dissolve(0.02)
+    $ renpy.play("audio/terminal_off.mp3") 
+    scene black
+    with Dissolve(0.03)
+
+    hide screen crt_overlay
+
+    $ renpy.pause(0.5, hard=True)
+
+    play music "bgm_menu.mp3" fadein 1.0
 
     # ── 工作室名称（大号字，居中） ──
     show text "{size=[splash_title_size]}Cr3aM Studio{/size}" at truecenter with dissolve
@@ -454,12 +556,13 @@ label splashscreen:
 
     # ── 游戏声明 ──
     show text "{size=[splash_text_size]}\n本游戏可能含有恐怖、惊悚元素。\n游戏基于Ren'Py引擎制作，采用AI生成图像与音乐素材。\n本作为单机游戏，不收集任何个人信息。\n\n所有内容纯属虚构。\n如有雷同，纯属巧合。{/size}" at truecenter with dissolve
-    $ renpy.pause(4.0, hard=True)
+    $ renpy.pause(3.0, hard=True)
     hide text with dissolve
     with Pause(0.5)
 
     # 回到纯黑色背景
     scene black
+
     with Pause(0.2)
 
     # ── 恢复 ESC 菜单键位 ──
@@ -470,6 +573,7 @@ label splashscreen:
     
     return
 
+
 # ── 游戏主入口 ──
 label start:
     # 主题曲淡出（1.5秒）
@@ -477,6 +581,9 @@ label start:
     
     # 等待淡出完成（可选：如果希望淡出完毕后文字才开始显示）
     $ renpy.pause(0.5, hard=True)
+
+    scene black with dissolve
+    $ renpy.pause(0.3, hard=True)
 
     # 如果此时音乐未在播放（从 splashscreen 进入时已在播，从其他地方进入可能没有）
     if not renpy.music.is_playing():
@@ -497,3 +604,52 @@ label cleanup_pending_removals:
             if item in player_inventory.backpack_grid:
                 player_inventory.remove_item(item)
     return
+
+# ── CRT显示效果 ──
+default boot_log = ""
+image flash_white = Solid("#CCFFCC")
+image flash_black = Solid("#000000")
+
+transform crt_flicker:
+
+    alpha 1.0
+    linear 0.08 alpha 0.95
+    linear 0.06 alpha 1.0
+    repeat
+
+screen crt_overlay():
+    zorder 999
+    add "gui/crt_scanline.png" at crt_flicker
+
+screen boot_terminal():
+
+    zorder 100
+    add "#000000"
+
+    text boot_log:
+        xpos 300
+        ypos 80
+        color "#66ff66"
+        size 32
+        font "fusion-pixel-12px-monospaced-zh_hans.ttf"   # 等宽字体
+        text_align 0.0
+
+    # 右上角带边框的状态面板（强制使用等宽字体）
+    text "╔═════════╗\n║ POWER:   STABLE  ║\n║ RAD:     0.12µSv ║\n║ CPU:     23°C    ║\n║ UPTIME:  247d    ║\n║ LINK:    REMOTE  ║\n╚═════════╝":
+        xpos 1720
+        ypos 80
+        xanchor 1.0
+        xoffset -80                         # 距离右边80像素，与左侧对称
+        color "#66ff66"
+        size 32
+        font "fusion-pixel-12px-monospaced-zh_hans.ttf"
+        text_align 0.5                     # 框内文字居中（也可以 0.0 左对齐）
+
+    # 底部功能键提示（也建议使用等宽字体，保证对齐）
+    text "[[F1] HELP   [[F2] LOAD   [[F11] SETTINGS   [[F12] QUIT   | BIOS v2.4   | (C) UNKNOWN":
+        xalign 0.5
+        yalign 1.0
+        yoffset -30
+        color "#66ff66"
+        size 32
+        font "fusion-pixel-12px-monospaced-zh_hans.ttf"

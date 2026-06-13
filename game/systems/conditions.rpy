@@ -62,7 +62,7 @@ init python:
                     if slot is not None:
                         slot["item"].degrade(hours)
                         if slot["item"].durability <= 0:
-                            player_inventory.backpack_slots[i] = None
+                            player_inventory.remove_item_stack(slot["item"])
                 # 装备槽：衰减 + 耐久归零自动卸下
                 for slot_name, item in list(player_inventory.slots.items()):
                     if item is not None:

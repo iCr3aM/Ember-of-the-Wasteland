@@ -48,8 +48,20 @@ screen scr_combat(combat_instance):
 
     modal True
     key "game_menu" action NullAction()
+    key "i" action Show(
+        "scr_unified_inventory",
+        equipment_slots=player_inventory.slots,
+        player_inv=player_inventory,
+        secondary_inv=get_current_ground_container() if get_current_ground_container() is not None else Inventory(max_slots=0),
+        screen_title="战斗中的背包",
+        secondary_title="地面",
+        mode="ground",
+        close_mode="hide",
+        show_secondary=False
+    )
     if renpy.loadable("images/bg_combat.png"):
-        add darken_background("images/bg_combat.png") xsize config.screen_width ysize config.screen_height fit "cover"
+        add "images/bg_combat.png" xsize config.screen_width ysize config.screen_height fit "cover"
+        add Solid("#00000022") xsize config.screen_width ysize config.screen_height
     else:
         add Solid("#102030") xsize config.screen_width ysize config.screen_height
     
@@ -170,7 +182,17 @@ screen scr_combat(combat_instance):
                             background Solid("#886622")
                             hover_background Solid("#aa8844")
                             sensitive combat_instance.can_player_act()
-                            action Show("scr_inventory", inv_instance=player_inventory)
+                            action Show(
+                                "scr_unified_inventory",
+                                equipment_slots=player_inventory.slots,
+                                player_inv=player_inventory,
+                                secondary_inv=get_current_ground_container() if get_current_ground_container() is not None else Inventory(max_slots=0),
+                                screen_title="战斗中的背包",
+                                secondary_title="地面",
+                                mode="ground",
+                                close_mode="hide",
+                                show_secondary=False
+                            )
                             text "打开背包" align (0.5,0.5) size 18 color "#ffffff"
                     null height 10
 
@@ -303,5 +325,5 @@ screen scr_combat(combat_instance):
                             xsize 280 ysize 45
                             background Solid("#775555")
                             hover_background Solid("#997777")
-                            action Return(["combat_end_trigger", combat_instance.winner])
+                            action Function(combat_instance.finalize_corpse_loot)
                             text "脱离战场结算" align (0.5, 0.5) size 18 color "#00ff00"

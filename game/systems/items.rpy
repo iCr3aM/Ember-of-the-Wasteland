@@ -10,7 +10,8 @@ init python:
         def __init__(self, id, name, desc, weight, value,
                     max_durability=1.0, degrade_per_hour=0.0,
                     equip_slots=None, max_stack=1,
-                    grid_size=(1,1)):
+                    grid_size=(1,1), grid_w=1, grid_h=1,
+                    container_grid_size=None):
             self.id = id
             self.name = name
             self.desc = desc
@@ -20,7 +21,74 @@ init python:
             self.degrade_per_hour = degrade_per_hour
             self.equip_slots = equip_slots or [] # 可装备的身体槽位
             self.max_stack = max_stack
-            self.grid_size = grid_size
+            self.grid_w = max(int(grid_w), 1)
+            self.grid_h = max(int(grid_h), 1)
+            self.grid_size = (self.grid_w, self.grid_h)
+
+            if container_grid_size is None:
+                container_grid_size = grid_size
+            self.container_grid_size = container_grid_size
+
+    ITEM_GRID_SIZE_MAP = {
+        # 穿戴物与小配件
+        101: (2, 2), 102: (2, 1), 106: (1, 2), 107: (1, 2), 108: (2, 1),
+        118: (1, 1), 119: (2, 1), 120: (2, 1), 121: (1, 1), 122: (1, 1),
+        123: (1, 1), 124: (1, 1), 125: (1, 1), 126: (1, 2), 127: (2, 2),
+        128: (1, 2), 133: (1, 1), 134: (1, 2), 135: (1, 2), 136: (1, 1),
+        137: (1, 1), 154: (1, 1),
+
+        # 武器与工具
+        103: (2, 1), 104: (1, 1), 109: (1, 1), 110: (2, 1), 111: (2, 1),
+        130: (2, 1), 131: (1, 1), 132: (2, 1), 217: (1, 1),
+
+        # 材料与杂物
+        105: (1, 1), 115: (1, 1), 116: (1, 2), 117: (1, 1), 148: (1, 1),
+        149: (1, 1), 150: (1, 1), 151: (1, 1), 152: (1, 1), 153: (1, 1),
+
+        # 消耗品
+        112: (1, 1), 113: (1, 1), 114: (1, 1), 138: (1, 1), 139: (1, 1),
+        140: (1, 1), 141: (1, 1), 142: (1, 2), 143: (1, 2), 144: (1, 2),
+        145: (1, 2), 146: (1, 1), 147: (1, 1), 201: (1, 2),
+        202: (1, 1), 203: (1, 1), 204: (1, 1), 205: (1, 1), 206: (1, 1),
+        207: (1, 1), 208: (1, 1), 209: (1, 1), 210: (1, 1), 211: (1, 1),
+        212: (1, 1), 213: (1, 1), 214: (1, 1), 215: (1, 1), 216: (1, 1),
+
+        # 背包与腰带装备自身占格
+        160: (1, 2), 161: (2, 2), 162: (2, 1), 163: (2, 1), 164: (3, 1),
+        165: (2, 1), 166: (2, 1), 167: (2, 3), 168: (2, 3), 169: (3, 2),
+        170: (2, 3), 171: (3, 3), 172: (3, 3),
+    }
+
+    ITEM_CONTAINER_GRID_SIZE_MAP = {
+        # 腰带打开后的容量，上限由 inventory.rpy 控制为 5x1。
+        160: (2, 1),
+        162: (3, 1),
+        163: (4, 1),
+        164: (5, 1),
+
+        # 背包打开后的容量，上限由 inventory.rpy 控制为 5x6。
+        161: (2, 2),
+        165: (3, 2),
+        166: (4, 2),
+        167: (3, 3),
+        168: (5, 3),
+        169: (4, 4),
+        170: (5, 4),
+        171: (5, 5),
+        172: (5, 6),
+    }
+
+    DEFAULT_ITEM_GRID_SIZE = (1, 1)
+
+    def apply_item_grid_sizes():
+        """为所有物品配置占格尺寸。未命中的物品默认 1x1。"""
+        for item_id, item_type in ITEMS_DB.items():
+            grid_w, grid_h = ITEM_GRID_SIZE_MAP.get(item_id, DEFAULT_ITEM_GRID_SIZE)
+            item_type.grid_w = max(int(grid_w), 1)
+            item_type.grid_h = max(int(grid_h), 1)
+            item_type.grid_size = (item_type.grid_w, item_type.grid_h)
+            if item_id in ITEM_CONTAINER_GRID_SIZE_MAP:
+                item_type.container_grid_size = ITEM_CONTAINER_GRID_SIZE_MAP[item_id]
 
 # ── 物品实例类（ItemInstance）与工厂函数 ──
 init python:
@@ -73,11 +141,12 @@ init python:
             renpy.notify("当前地形没有可用的空位，无法丢弃。")
             return False
 
-        if not inv_instance.remove_item(item_instance):
+        moved_item = inv_instance.extract_item_for_transfer(item_instance)
+        if moved_item is None:
             return False
 
-        if not current_container.add_item(item_instance):
-            inv_instance.add_item(item_instance)
+        if not current_container.add_item(moved_item):
+            inv_instance.add_item(moved_item)
             renpy.notify("地上的东西满了，无法丢弃。")
             return False
 
@@ -91,11 +160,15 @@ init python:
 
     def take_item_from_ground_to_player(item_instance, ground_container, player_inv):
         """从地面容器拾取物品到玩家背包"""
-        if player_inv.add_item(item_instance):
-            ground_container.remove_item(item_instance)
+        moved_item = ground_container.extract_item_for_transfer(item_instance)
+        if moved_item is None:
+            return False
+
+        if player_inv.add_item(moved_item):
             renpy.notify(f"{item_instance.config.name} 已放入背包。")
             return True
         else:
+            ground_container.add_item(moved_item)
             renpy.notify("背包已满，无法取回。")
             return False
 
@@ -398,18 +471,16 @@ init python:
                 actor = player_stats
             except NameError:
                 return (False, item_instance)
-        success = use_function(player_stats)
+        success = use_function(actor)
         
         return (success, item_instance)
 
 init python:
     def use_item_and_refresh_screen(item_instance, inv_instance, actor=None):
-        """使用物品并刷新背包界面（含战斗禁用检测）"""
+        """使用物品并刷新背包界面。"""
         success, item = use_item_from_inventory(item_instance, actor=actor)
         if success:
             inv_instance.remove_item(item)
-            if is_in_active_combat():
-                mark_inventory_action_performed()
 
 # =============================================================================
 # 物品数据库注册表
@@ -1018,8 +1089,7 @@ init python:
         max_durability=1.0,
         degrade_per_hour=0.0,
         equip_slots=["waist"],
-        max_stack=1,
-        grid_size=(1,2)
+        max_stack=1
     )
 
     ITEMS_DB[161] = ItemType(
@@ -1031,8 +1101,7 @@ init python:
         max_durability=1.0,
         degrade_per_hour=0.0,
         equip_slots=["backpack"],
-        max_stack=1,
-        grid_size=(2,2)
+        max_stack=1
     )
 
     ITEMS_DB[162] = ItemType(
@@ -1044,8 +1113,7 @@ init python:
         max_durability=0.5,
         degrade_per_hour=0.02,
         equip_slots=["waist"],
-        max_stack=1,
-        grid_size=(1,3)
+        max_stack=1
     )
 
     ITEMS_DB[163] = ItemType(
@@ -1057,8 +1125,7 @@ init python:
         max_durability=0.8,
         degrade_per_hour=0.01,
         equip_slots=["waist"],
-        max_stack=1,
-        grid_size=(1,4)
+        max_stack=1
     )
 
     ITEMS_DB[164] = ItemType(
@@ -1070,8 +1137,7 @@ init python:
         max_durability=0.9,
         degrade_per_hour=0.005,
         equip_slots=["waist"],
-        max_stack=1,
-        grid_size=(1,5)
+        max_stack=1
     )
 
     ITEMS_DB[165] = ItemType(
@@ -1083,8 +1149,7 @@ init python:
         max_durability=0.5,
         degrade_per_hour=0.02,
         equip_slots=["backpack"],
-        max_stack=1,
-        grid_size=(2,3)
+        max_stack=1
     )
 
     ITEMS_DB[166] = ItemType(
@@ -1096,8 +1161,7 @@ init python:
         max_durability=0.5,
         degrade_per_hour=0.02,
         equip_slots=["backpack"],
-        max_stack=1,
-        grid_size=(2,4)
+        max_stack=1
     )
 
     ITEMS_DB[167] = ItemType(
@@ -1109,8 +1173,7 @@ init python:
         max_durability=0.8,
         degrade_per_hour=0.01,
         equip_slots=["backpack"],
-        max_stack=1,
-        grid_size=(3,3)
+        max_stack=1
     )
 
     ITEMS_DB[168] = ItemType(
@@ -1122,8 +1185,7 @@ init python:
         max_durability=0.6,
         degrade_per_hour=0.015,
         equip_slots=["backpack"],
-        max_stack=1,
-        grid_size=(2,5)
+        max_stack=1
     )
 
     ITEMS_DB[169] = ItemType(
@@ -1135,8 +1197,7 @@ init python:
         max_durability=0.9,
         degrade_per_hour=0.005,
         equip_slots=["backpack"],
-        max_stack=1,
-        grid_size=(3,4)
+        max_stack=1
     )
 
     ITEMS_DB[170] = ItemType(
@@ -1148,8 +1209,7 @@ init python:
         max_durability=0.9,
         degrade_per_hour=0.005,
         equip_slots=["backpack"],
-        max_stack=1,
-        grid_size=(4,4)
+        max_stack=1
     )
 
     ITEMS_DB[171] = ItemType(
@@ -1161,8 +1221,7 @@ init python:
         max_durability=0.7,
         degrade_per_hour=0.015,
         equip_slots=["backpack"],
-        max_stack=1,
-        grid_size=(4,5)
+        max_stack=1
     )
 
     ITEMS_DB[172] = ItemType(
@@ -1174,8 +1233,7 @@ init python:
         max_durability=0.85,
         degrade_per_hour=0.01,
         equip_slots=["backpack"],
-        max_stack=1,
-        grid_size=(5,5)
+        max_stack=1
     )
 
     ITEMS_DB[201] = ItemType(
@@ -1369,3 +1427,5 @@ init python:
         equip_slots=[],
         max_stack=3
     )
+
+    apply_item_grid_sizes()

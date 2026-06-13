@@ -5,6 +5,9 @@
 # =============================================================================
 # ── 地图数据模型 ──
 init python:
+    GROUND_CONTAINER_GRID_COLS = 5
+    GROUND_CONTAINER_GRID_ROWS = 24
+
     class HexTile:
         """地图格子：地形类型、搜刮状态、特殊标记、地面容器"""
         def __init__(self, terrain_type, treasure_id, special_feature=None, merchant_id=None):
@@ -12,7 +15,11 @@ init python:
             self.treasure_id = treasure_id
             self.special_feature = special_feature  # "lake_water" / "merchant" / None
             self.merchant_id = merchant_id
-            self.ground_container = Inventory(max_slots=128)  # 地面掉落容器
+            self.ground_container = Inventory(
+                max_slots=GROUND_CONTAINER_GRID_COLS * GROUND_CONTAINER_GRID_ROWS,
+                grid_cols=GROUND_CONTAINER_GRID_COLS,
+                grid_rows=GROUND_CONTAINER_GRID_ROWS,
+            )  # 地面掉落容器
             self.ground_last_checked_day = None               # 上次检查地面容器的游戏日
             self.search_points = []       # 查看后生成的搜刮点列表
             self.inspected = False        # 是否已查看过（替代 scavenged）
@@ -148,33 +155,26 @@ init python:
         """检查格子地面容器是否有物品"""
         if tile is None or tile.ground_container is None:
             return False
-        for slot in tile.ground_container.backpack_slots:
-            if slot is not None:
-                return True
-        return False
+        tile.ground_container._ensure_grid_state()
+        return bool(tile.ground_container.grid_items)
 
     def degrade_ground_container_items(tile, hours):
         """对地面容器内所有物品应用耐久度衰减，耐久度为0的物品自动销毁"""
         if tile is None:
             return
-        for i, slot in enumerate(tile.ground_container.backpack_slots):
-            if slot is not None:
-                slot["item"].degrade(hours)
-                # ★ 耐久度为0时自动销毁，从地面容器移除
-                if slot["item"].durability <= 0:
-                    tile.ground_container.backpack_slots[i] = None
+        tile.ground_container._ensure_grid_state()
+        for item_instance, entry in list(tile.ground_container.iter_grid_items()):
+            item_instance.degrade(hours)
+            # ★ 耐久度为0时自动销毁，从地面容器移除
+            if item_instance.durability <= 0:
+                tile.ground_container.remove_item_stack(item_instance)
 
     def try_steal_ground_container_item(tile):
         """模拟 NPC 偷窃地面物品：20% 概率随机减少一个堆叠"""
         if tile is None:
             return
-        non_empty = [i for i, slot in enumerate(tile.ground_container.backpack_slots) if slot is not None]
-        if non_empty and renpy.random.random() < 0.2:
-            idx = renpy.random.choice(non_empty)
-            slot = tile.ground_container.backpack_slots[idx]
-            slot["stack"] -= 1
-            if slot["stack"] <= 0:
-                tile.ground_container.backpack_slots[idx] = None
+        if renpy.random.random() < 0.2:
+            tile.ground_container.remove_one_random_item()
 
     def move_player_hex(target_x, target_y):
         """处理玩家在大地图格子的移动损耗，并联动推动时间与代谢"""

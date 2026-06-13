@@ -4,6 +4,9 @@
 # 实现：计算物品的最终成交价；执行货币（香烟）扣除逻辑。
 # =============================================================================
 init python:
+    MERCHANT_GRID_COLS = 5
+    MERCHANT_GRID_ROWS = 12
+
     # 临时变量，用于传递当前交易商人配置给独立标签
     _current_trade_trader_config = None
 
@@ -71,24 +74,31 @@ init python:
             renpy.notify("香烟不足，无法购买！")
             return
 
-        # 检查玩家背包是否有空位（过滤掉 None 槽位，精准计算已被占用的格子数）
-        used_slots = len([slot for slot in player_inv.backpack_slots if slot is not None])
-        if used_slots >= player_inv.max_slots:
-            # 如果格子满了，再检查该物品是否能堆叠到已有的、没满的相同物品格子中
-            if item_instance.config.max_stack <= 1 or not any(
-                slot["item"].id == item_instance.id and slot["stack"] < item_instance.config.max_stack
-                for slot in player_inv.backpack_slots if slot is not None
-            ):
-                renpy.notify("你的背包已经满了。")
-                return
+        # 检查玩家背包是否有足够空间
+        can_stack = False
+        if item_instance.config.max_stack > 1:
+            for entry in player_inv.grid_items.values():
+                if entry["item"].id == item_instance.id and entry["stack"] < item_instance.config.max_stack:
+                    can_stack = True
+                    break
+
+        if not can_stack and player_inv.find_space_for_item(item_instance) is None:
+            renpy.notify("你的背包已经满了。")
+            return
+
+        moved_item = merchant_inv.extract_item_for_transfer(item_instance)
+        if moved_item is None:
+            renpy.notify("商品不存在，无法购买。")
+            return
 
         # 扣除资产并转移物品
         player_stats.cigarettes -= buy_price
-        
-        # 从商人的库存中移除该物品实例
-        merchant_inv.remove_item(item_instance)
-        # 将该物品实例移入玩家背包
-        player_inv.add_item(item_instance)
+
+        if not player_inv.add_item(moved_item):
+            merchant_inv.add_item(moved_item)
+            player_stats.cigarettes += buy_price
+            renpy.notify("你的背包已经满了。")
+            return
         
         renpy.notify(f"花费 {buy_price:.0f} 支烟购买了 {item_instance.config.name}")
         renpy.restart_interaction()
@@ -98,25 +108,27 @@ init python:
         # 计算商品出售价格
         sell_price = get_shop_price(item_instance, shop_type, buy=False, barter_rate=barter_rate)
         
-        # 检查商人的背包（库存）是否已满
-        # 直接读取 merchant_inv 实例中的 max_slots，不再使用硬编码的 20
-        merchant_max_slots = merchant_inv.max_slots 
-        
-        # 精确计算已占用的非空槽位
-        merchant_used_slots = len([slot for slot in merchant_inv.backpack_slots if slot is not None])
-        
-        # 即使格子满了，依然要检查是否可以堆叠到现有物品中
-        if merchant_used_slots >= merchant_max_slots:
-            if item_instance.config.max_stack <= 1 or not any(
-                slot["item"].id == item_instance.id and slot["stack"] < item_instance.config.max_stack
-                for slot in merchant_inv.backpack_slots if slot is not None
-            ):
-                renpy.notify("商人的背包已经满了。")
-                return
+        can_stack = False
+        if item_instance.config.max_stack > 1:
+            for entry in merchant_inv.grid_items.values():
+                if entry["item"].id == item_instance.id and entry["stack"] < item_instance.config.max_stack:
+                    can_stack = True
+                    break
+
+        if not can_stack and merchant_inv.find_space_for_item(item_instance) is None:
+            renpy.notify("商人的背包已经满了。")
+            return
+
+        moved_item = player_inv.extract_item_for_transfer(item_instance)
+        if moved_item is None:
+            renpy.notify("你没有这件物品。")
+            return
 
         # 扣除玩家物品并结算香烟
-        player_inv.remove_item(item_instance)
-        merchant_inv.add_item(item_instance)
+        if not merchant_inv.add_item(moved_item):
+            player_inv.add_item(moved_item)
+            renpy.notify("商人的背包已经满了。")
+            return
         player_stats.cigarettes += sell_price
         
         renpy.notify(f"卖出 {item_instance.config.name}，获得 {sell_price:.0f} 支烟")
@@ -166,7 +178,11 @@ init python:
 
     def create_merchant_inventory(merchant_config):
         """根据稀有度权重生成商人库存（最多30件，每稀有度至少2件）"""
-        inv = Inventory(max_slots=60)
+        inv = Inventory(
+            max_slots=MERCHANT_GRID_COLS * MERCHANT_GRID_ROWS,
+            grid_cols=MERCHANT_GRID_COLS,
+            grid_rows=MERCHANT_GRID_ROWS,
+        )
 
         MAX_MERCHANT_ITEMS = 30
         selected_ids = []

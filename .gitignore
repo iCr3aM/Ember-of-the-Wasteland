@@ -1,5 +1,3 @@
-# Compiled script files. These are important for saving, and so should
-# be preserved by developer and build systems after the game has been released.
 # 忽略 Ren'Py 编译出的二进制缓存文件，这些文件在游戏运行时会被重新生成。
 /game/**/*.rpyc
 /game/**/*.rpymc

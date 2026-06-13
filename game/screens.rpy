@@ -104,6 +104,10 @@ screen floating_tooltip(text, target_pos):
         $ x = target_pos[0] - 340
     if y > 850:
         $ y = target_pos[1] - 140
+
+    $ tooltip_parts = text.split("\n\n", 1) if text else [""]
+    $ tooltip_title = tooltip_parts[0] if len(tooltip_parts) > 1 else None
+    $ tooltip_body = tooltip_parts[1] if len(tooltip_parts) > 1 else text
         
     frame:
         xpos x
@@ -111,12 +115,33 @@ screen floating_tooltip(text, target_pos):
         background "#151515f5" 
         padding (14, 12)
         xminimum 220
-        xmaximum 320            # 限制宽度，长文本自动换行
+        xmaximum 220            # 限制宽度，长文本自动换行
         
-        text text:
-            size 16
-            color "#e0e0e0"
-            line_spacing 4
+        if tooltip_title:
+            vbox:
+                xsize 192
+                spacing 10
+
+                text tooltip_title:
+                    xsize 192
+                    min_width 192
+                    size 18
+                    color "#ffd18a"
+                    textalign 1.0
+                    outlines [(1, "#000000cc", 2, 2)]
+
+                text tooltip_body:
+                    xsize 200
+                    size 16
+                    color "#e0e0e0"
+                    line_spacing 4
+                    outlines [(1, "#000000cc", 2, 2)]
+        else:
+            text text:
+                size 16
+                color "#e0e0e0"
+                line_spacing 4
+                outlines [(1, "#000000cc", 2, 2)]
 
 
 ## 对话屏幕 ########################################################################

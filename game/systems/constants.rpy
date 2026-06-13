@@ -9,8 +9,6 @@ init -200 python:
     # 音乐播放冷却（游戏内分钟数）
     # ═══════════════════════════════════════════
     EXPLORE_MUSIC_COOLDOWN_MINUTES = 30  # 30分钟游戏内时间冷却
-    BACKGROUND_DARKNESS = -0.10  # 战斗和大地图背景亮度压暗幅度，范围 -1 到 1
-
     # 战斗状态
     COND_BLEED = 201                # 流血
     COND_POISON = 202               # 中毒
@@ -451,216 +449,264 @@ init -200 python:
     SEARCH_POINT_INFO = {
         # ── 平原 ──
         SEARCH_POINT_ABANDONED_CAMP: {
-            "name": "废弃营地",
+            "name": "营地",
             "desc": "一个被遗弃的临时营地，帐篷已经坍塌，但也许还留下了一些有用的东西。",
+            "icon": "images/search_icons/plains/ABANDONED_CAMP.png",
         },
         SEARCH_POINT_DEAD_TREE_HOLLOW: {
             "name": "枯树洞",
             "desc": "一棵巨大的枯树，树干上有一个空洞，里面似乎藏着什么东西。",
+            "icon": "images/search_icons/plains/DEAD_TREE_HOLLOW.png",
         },
         SEARCH_POINT_ABANDONED_CELLAR: {
-            "name": "废弃地窖",
+            "name": "地窖",
             "desc": "一扇斜开在地面上的铁门，台阶长满青苔。这曾是一户人家的储藏室，厚重的土墙让里面的东西保存得比外面好。",
+            "icon": "images/search_icons/plains/ABANDONED_CELLAR.png",
         },
         SEARCH_POINT_OLD_SIGNAL_TOWER: {
-            "name": "古老的信号塔",
+            "name": "古老信号塔",
             "desc": "一座锈迹斑斑的钢架信号塔，底部机房里散落着被遗弃的设备和几本受潮的工作日志。",
+            "icon": "images/search_icons/plains/OLD_SIGNAL_TOWER.png",
         },
         SEARCH_POINT_DRIED_RIVERBED: {
-            "name": "干涸的河床",
+            "name": "干涸河床",
             "desc": "曾经的小溪早已断流，碎石间嵌着被冲刷而来的零碎物品。几只变异蜥蜴在阴影里窥视着你。",
+            "icon": "images/search_icons/plains/DRIED_RIVERBED.png",
         },
 
         # ── 森林 ──
         SEARCH_POINT_HUNTER_TREE_STAND: {
-            "name": "猎人的树架",
+            "name": "猎人树架",
             "desc": "树干上钉着的简易木架，猎人曾蹲在上面等待猎物。",
+            "icon": "images/search_icons/forest/HUNTER_TREE_STAND.png",
         },
         SEARCH_POINT_FALLEN_TREE_ROOT: {
             "name": "倒木根区",
             "desc": "被风暴掀翻的巨树，根部翘起形成天然浅坑。",
+            "icon": "images/search_icons/forest/FALLEN_TREE_ROOT.png",
         },
         SEARCH_POINT_DENSE_FOREST_CLEARING: {
             "name": "密林空地",
             "desc": "灌木围住的空地，几块被苔藓覆盖的石头适合藏东西。",
+            "icon": "images/search_icons/forest/DENSE_FOREST_CLEARING.png",
         },
         SEARCH_POINT_RANGER_POST: {
             "name": "护林员哨站",
             "desc": "一座架在几棵粗壮树干之间的木屋，屋顶塌了一半，但柜子里可能还锁着护林员的装备。",
+            "icon": "images/search_icons/forest/RANGER_POST.png",
         },
         SEARCH_POINT_ABANDONED_SAWMILL: {
-            "name": "废弃锯木场",
+            "name": "锯木场",
             "desc": "生锈的电锯、堆成小山的木屑、半截埋在土里的圆木。机器早就停了，但工具还在。",
+            "icon": "images/search_icons/forest/ABANDONED_SAWMILL.png",
         },
         SEARCH_POINT_ANIMAL_DEN: {
             "name": "兽穴",
             "desc": "一个被荆棘半遮住的土洞，洞口散落着嚼碎的骨头。某种大型生物曾住在这里，现在里面也许还藏着它拖回来的战利品。",
+            "icon": "images/search_icons/forest/ANIMAL_DEN.png",
         },
 
         # ── 废墟 ──
         SEARCH_POINT_ABANDONED_STORE: {
-            "name": "废弃商店",
+            "name": "商店",
             "desc": "铁皮卷帘门被撬开一半，货架歪倒在地，但仓库里也许还有存货。",
+            "icon": "images/search_icons/city_ruins/ABANDONED_STORE.png",
         },
         SEARCH_POINT_ABANDONED_OFFICE: {
-            "name": "废弃办公楼",
+            "name": "办公楼",
             "desc": "玻璃碎了一地，抽屉全被拉开，但总有人漏掉最下面那层。",
+            "icon": "images/search_icons/city_ruins/ABANDONED_OFFICE.png",
         },
         SEARCH_POINT_ABANDONED_PHARMACY: {
-            "name": "废弃药房",
+            "name": "药房",
             "desc": "门上的红十字掉了一半，几个锁着的柜子还没被撬开。",
+            "icon": "images/search_icons/city_ruins/ABANDONED_PHARMACY.png",
         },
         SEARCH_POINT_ABANDONED_APARTMENT: {
-            "name": "废弃公寓",
+            "name": "公寓",
             "desc": "住户的门半开半掩，衣柜、床底、厨房橱柜——能翻的地方很多。",
+            "icon": "images/search_icons/city_ruins/ABANDONED_APARTMENT.png",
         },
         SEARCH_POINT_UNDERGROUND_GARAGE: {
             "name": "地下车库",
             "desc": "斜坡入口的钢筋裸露在外，角落里堆着废弃车胎和铁桶。",
+            "icon": "images/search_icons/city_ruins/UNDERGROUND_GARAGE.png",
         },
         SEARCH_POINT_ABANDONED_FIRE_STATION: {
-            "name": "废弃消防站",
+            "name": "消防站",
             "desc": "车库里还停着一辆轮胎瘪了的消防车，墙上挂着生锈的消防斧。二楼的生活区被翻得乱七八糟。",
+            "icon": "images/search_icons/city_ruins/ABANDONED_FIRE_STATION.png",
         },
         SEARCH_POINT_ABANDONED_SCHOOL: {
-            "name": "废弃学校",
+            "name": "学校",
             "desc": "课桌椅歪倒一地，黑板上有人用粉笔写着潦草的求救信息。医务室和食堂也许还有东西没被搬空。",
+            "icon": "images/search_icons/city_ruins/ABANDONED_SCHOOL.png",
         },
         SEARCH_POINT_ABANDONED_LIBRARY: {
-            "name": "废弃图书馆",
+            "name": "图书馆",
             "desc": "书架像多米诺骨牌一样倒在地上，纸页发黄发脆。大部分书被拿去生火了，但厚重的档案室铁门还锁着。",
+            "icon": "images/search_icons/city_ruins/ABANDONED_LIBRARY.png",
         },
         SEARCH_POINT_SEWER_ENTRANCE: {
-            "name": "废弃下水道入口",
+            "name": "下水道入口",
             "desc": "一个敞开的检修井，铁梯子锈得嘎吱作响。地下管道里偶尔有风灌上来，带着霉味和某种生物的味道。",
+            "icon": "images/search_icons/city_ruins/SEWER_ENTRANCE.png",
         },
 
         # ── 湖泊 ──
         SEARCH_POINT_ABANDONED_FISHING_BOAT: {
-            "name": "废弃渔船",
+            "name": "渔船",
             "desc": "锈迹斑斑的铁皮渔船搁浅在岸边，甲板下的储物舱可能还封着。",
+            "icon": "images/search_icons/lake/ABANDONED_FISHING_BOAT.png",
         },
         SEARCH_POINT_LAKESIDE_CAMP: {
             "name": "湖边营地",
             "desc": "用芦苇杆和塑料布搭成的窝棚，主人不知去向。",
+            "icon": "images/search_icons/lake/LAKESIDE_CAMP.png",
         },
         SEARCH_POINT_SHORE_DEBRIS: {
             "name": "浅滩杂物堆",
             "desc": "湖水冲上来的一堆杂物：树枝、塑料瓶、被泡烂的布料。",
+            "icon": "images/search_icons/lake/SHORE_DEBRIS.png",
         },
         SEARCH_POINT_LAKE_DRINK: {
             "name": "湖水",
             "desc": "浑浊的湖水泛着诡异的油彩光泽。",
             "event_label": "encounter_lake_water",   # 指向已有的事件标签
-            "icon": "images/search_icons/LAKE_DRINK.png",
+            "icon": "images/search_icons/lake/LAKE_DRINK.png",
         },
         SEARCH_POINT_ABANDONED_BOATHOUSE: {
-            "name": "废弃船屋",
+            "name": "船屋",
             "desc": "一座半塌的木板房歪在湖面上，靠几根快烂透的木桩撑着。门口系着一艘底朝天的划艇。",
+            "icon": "images/search_icons/lake/ABANDONED_BOATHOUSE.png",
         },
         SEARCH_POINT_FISHING_PIER: {
             "name": "钓鱼栈桥",
             "desc": "一条伸向湖心的木栈道，栏杆断了几处。尽头有一个铁皮工具箱，锁早被人砸了，但里面似乎还有东西。",
+            "icon": "images/search_icons/lake/FISHING_PIER.png",
         },
         SEARCH_POINT_LAKESIDE_REEDS: {
             "name": "湖畔芦苇丛",
             "desc": "比人还高的芦苇密密匝匝地长在水边，风过时沙沙作响。里面藏着鸟巢和被冲上来的浮木杂物。",
+            "icon": "images/search_icons/lake/LAKESIDE_REEDS.png",
         },
 
         # ── 沙滩 ──
         SEARCH_POINT_ABANDONED_LIFEGUARD_TOWER: {
-            "name": "废弃救生塔",
+            "name": "救生塔",
             "desc": "歪斜的木制瞭望塔，底层的储藏室里锁着救生设备。",
+            "icon": "images/search_icons/beach/ABANDONED_LIFEGUARD_TOWER.png",
         },
         SEARCH_POINT_SHIPWRECK: {
-            "name": "废船残骸",
+            "name": "货船残骸",
             "desc": "被风暴拍碎在礁石上的货船，货舱裸露在外。",
+            "icon": "images/search_icons/beach/SHIPWRECK.png",
         },
         SEARCH_POINT_TIDE_CAVE: {
             "name": "潮汐洞穴",
             "desc": "退潮后露出一个低矮的岩洞口，往里看一片漆黑。涨潮时这里会被海水淹没，所以没人敢住，但偶尔有人把东西藏进来。",
+            "icon": "images/search_icons/beach/TIDE_CAVE.png",
         },
         SEARCH_POINT_ABANDONED_BATHING_BEACH: {
-            "name": "废弃海滨浴场",
+            "name": "海滨浴场",
             "desc": "褪色的遮阳伞歪在沙子里，售票亭的玻璃碎了，后面有几个锈得不成样子的储物柜。",
+            "icon": "images/search_icons/beach/ABANDONED_BATHING_BEACH.png",
         },
         SEARCH_POINT_FISHERMAN_SHACK: {
             "name": "渔民小屋",
             "desc": "一间用漂流木和铁皮搭成的小棚子，墙上挂着渔网浮标和晒干的鱼线。",
+            "icon": "images/search_icons/beach/FISHERMAN_SHACK.png",
         },
 
         # ── 公路 ──
         SEARCH_POINT_ABANDONED_GAS_STATION: {
-            "name": "废弃加油站",
+            "name": "加油站",
             "desc": "顶棚塌了半边，便利店里的货架东倒西歪，但冰柜也许还有存货。",
+            "icon": "images/search_icons/road/ABANDONED_GAS_STATION.png",
         },
         SEARCH_POINT_ABANDONED_VEHICLE: {
-            "name": "废弃车辆",
+            "name": "车辆",
             "desc": "一辆轿车侧翻在路边，后备箱半开着。",
+            "icon": "images/search_icons/road/ABANDONED_VEHICLE.png",
         },
         SEARCH_POINT_ROAD_SIGN_SERVICE: {
             "name": "路牌服务站",
             "desc": "砖砌的小休息站，墙上贴着褪色的旧公路地图。",
+            "icon": "images/search_icons/road/ROAD_SIGN_SERVICE.png",
         },
         SEARCH_POINT_ABANDONED_TOLL_BOOTH: {
-            "name": "废弃收费站",
+            "name": "收费站",
             "desc": "一个逼仄的水泥亭子，玻璃窗被砸碎，收费机的抽屉半开，里面的硬币早被人掏空。但墙角还有被忽略的杂物。",
+            "icon": "images/search_icons/road/ABANDONED_TOLL_BOOTH.png",
         },
         SEARCH_POINT_OVERTURNED_TRUCK: {
-            "name": "翻倒的货运卡车",
+            "name": "侧翻卡车",
             "desc": "一辆侧翻在路基下的重型卡车，货柜上的锁还挂着。司机室里散落着私人物品，货柜里堆着早已腐烂的货箱。",
+            "icon": "images/search_icons/road/OVERTURNED_TRUCK.png",
         },
         SEARCH_POINT_BRIDGE_CAMP: {
-            "name": "桥洞下的营地",
+            "name": "桥洞下营地",
             "desc": "公路桥的阴影里，有人用硬纸板和塑料布搭过一个临时窝。篝火的余烬早已冰冷，几件东西被匆匆遗落在角落里。",
+            "icon": "images/search_icons/road/BRIDGE_CAMP.png",
         },
 
         # ── 农田 ──
         SEARCH_POINT_ABANDONED_FARMHOUSE: {
-            "name": "废弃农舍",
+            "name": "农舍",
             "desc": "木门歪在门框上，灶台下的铁锅还盖着。",
+            "icon": "images/search_icons/farmland/ABANDONED_FARMHOUSE.png",
         },
         SEARCH_POINT_ABANDONED_BARN: {
-            "name": "废弃谷仓",
+            "name": "谷仓",
             "desc": "堆着发霉干草和锈蚀农具的谷仓，角落里立着一把镰刀。",
+            "icon": "images/search_icons/farmland/ABANDONED_BARN.png",
         },
         SEARCH_POINT_ABANDONED_TRACTOR: {
-            "name": "废弃拖拉机",
+            "name": "拖拉机",
             "desc": "轮胎瘪了的旧拖拉机，驾驶室玻璃全碎，工具箱锁在座位下。",
+            "icon": "images/search_icons/farmland/ABANDONED_TRACTOR.png",
         },
         SEARCH_POINT_ABANDONED_MILL: {
-            "name": "废弃磨坊",
+            "name": "磨坊",
             "desc": "一座石砌的老磨坊，风车叶片断了两根。底层还堆着几袋发霉的谷物，齿轮间卡着破布和工具。",
+            "icon": "images/search_icons/farmland/ABANDONED_MILL.png",
         },
         SEARCH_POINT_ABANDONED_GREENHOUSE: {
-            "name": "废弃温室",
+            "name": "温室",
             "desc": "玻璃顶棚碎了大半，里面种的东西早就死光了。花盆和培养槽间散落着园艺工具和几袋干结的肥料。",
+            "icon": "images/search_icons/farmland/ABANDONED_GREENHOUSE.png",
         },
         SEARCH_POINT_ABANDONED_WELL: {
-            "name": "废弃水井",
+            "name": "水井",
             "desc": "一口石砌的老井，井口盖着半块木板。井壁上曾经有人藏过东西——用绳子吊下去的那种。",
+            "icon": "images/search_icons/farmland/ABANDONED_WELL.png",
         },
 
         # ── 沼泽 ──
         SEARCH_POINT_SWAMP_SHACK: {
             "name": "沼泽窝棚",
             "desc": "架在木桩上的破棚子，里面堆满了捡来的破烂。",
+            "icon": "images/search_icons/swamp/SWAMP_SHACK.png",
         },
         SEARCH_POINT_ABANDONED_TREEHOUSE: {
-            "name": "废弃树屋",
+            "name": "树屋",
             "desc": "搭在老树上的小木屋，绳索梯子断了一半。",
+            "icon": "images/search_icons/swamp/ABANDONED_TREEHOUSE.png",
         },
         SEARCH_POINT_SWAMP_SHIPWRECK: {
             "name": "沼泽沉船",
             "desc": "被沼泽吞没了一半的平底船，密闭的铁箱可能还干燥。",
+            "icon": "images/search_icons/swamp/SWAMP_SHIPWRECK.png",
         },
         SEARCH_POINT_COLLAPSED_HUNTING_STAND: {
-            "name": "倒塌的狩猎高台",
+            "name": "倒塌狩猎高台",
             "desc": "一座歪在泥水里的木制高台，猎人曾蹲在上面等鹿。梯子断了，但平台上可能还留着装备。",
+            "icon": "images/search_icons/swamp/COLLAPSED_HUNTING_STAND.png",
         },
         SEARCH_POINT_ABANDONED_PUMP_STATION: {
-            "name": "废弃泵站",
+            "name": "水泵站",
             "desc": "一座被藤蔓吞没的砖砌泵站，巨大的铁管从泥地里伸出，里面回荡着滴水的声音。",
+            "icon": "images/search_icons/swamp/ABANDONED_PUMP_STATION.png",
         },
 
         # ── 其他地形占位符 ──
